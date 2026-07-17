@@ -444,6 +444,14 @@ $foundryEndpoint = az cognitiveservices account show `
 
 Write-Log "Foundry resource ready: $FoundryResourceName ($foundryEndpoint)"
 
+# Enable system-assigned managed identity on Foundry resource (required for projects)
+Write-Log "Enabling managed identity on Foundry resource..."
+az cognitiveservices account identity assign `
+    --name $FoundryResourceName `
+    --resource-group $sharedRg `
+    --output none 2>$null
+Write-Log "Managed identity enabled"
+
 # ============================================================================
 # Deploy Models (shared across all projects)
 # ============================================================================
