@@ -320,24 +320,31 @@ Write-Log "Creating blob container: pharma-commercial-data"
 $savedErrorPref = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 
-# Try auth-mode login first, fall back to key if available
-$containerResult = az storage container create `
-    --name pharma-commercial-data `
+# Generate an account-level SAS token for container/blob operations
+$sasExpiry = (Get-Date).AddHours(2).ToUniversalTime().ToString("yyyy-MM-ddTHH:mmZ")
+$sasToken = az storage account generate-sas `
     --account-name $storageNameClean `
-    --auth-mode login `
-    --output none 2>&1
-if ($LASTEXITCODE -ne 0) {
-    Write-Log "  auth-mode login failed, trying with account key..." "WARN"
-    $storageKey = az storage account keys list --account-name $storageNameClean --resource-group $sharedRg --query "[0].value" -o tsv 2>$null
-    if ($storageKey) {
-        az storage container create `
-            --name pharma-commercial-data `
-            --account-name $storageNameClean `
-            --account-key $storageKey `
-            --output none 2>$null
-    } else {
-        Write-Log "  Could not retrieve storage key (key auth may be disabled). Container may need manual creation." "WARN"
-    }
+    --permissions rwdlacup `
+    --resource-types sco `
+    --services b `
+    --expiry $sasExpiry `
+    --https-only `
+    -o tsv 2>$null
+
+if ($sasToken) {
+    Write-Log "  Generated SAS token (expires in 2 hours)"
+    az storage container create `
+        --name pharma-commercial-data `
+        --account-name $storageNameClean `
+        --sas-token $sasToken `
+        --output none 2>$null
+} else {
+    Write-Log "  SAS generation failed, trying auth-mode login..." "WARN"
+    az storage container create `
+        --name pharma-commercial-data `
+        --account-name $storageNameClean `
+        --auth-mode login `
+        --output none 2>$null
 }
 
 $ErrorActionPreference = $savedErrorPref
@@ -350,14 +357,25 @@ if (Test-Path $dataDir) {
     $csvFiles = Get-ChildItem -Path $dataDir -Filter "*.csv"
     foreach ($csv in $csvFiles) {
         Write-Log "  Uploading $($csv.Name)..."
-        az storage blob upload `
-            --account-name $storageNameClean `
-            --container-name pharma-commercial-data `
-            --file $csv.FullName `
-            --name $csv.Name `
-            --auth-mode login `
-            --overwrite `
-            --output none 2>$null
+        if ($sasToken) {
+            az storage blob upload `
+                --account-name $storageNameClean `
+                --container-name pharma-commercial-data `
+                --file $csv.FullName `
+                --name $csv.Name `
+                --sas-token $sasToken `
+                --overwrite `
+                --output none 2>$null
+        } else {
+            az storage blob upload `
+                --account-name $storageNameClean `
+                --container-name pharma-commercial-data `
+                --file $csv.FullName `
+                --name $csv.Name `
+                --auth-mode login `
+                --overwrite `
+                --output none 2>$null
+        }
     }
     Write-Log "Sample data uploaded successfully"
 }
