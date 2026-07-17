@@ -296,14 +296,51 @@ if ($existingStorage) {
 
 Write-Log "Storage Account ready: $storageNameClean"
 
-# Create the pharma data container (use account key since RBAC may not have propagated yet)
+$storageId = az storage account show `
+    --name $storageNameClean `
+    --resource-group $sharedRg `
+    --query id -o tsv
+
+# Assign current user Storage Blob Data Contributor so we can create containers/upload
+$currentUserId = az ad signed-in-user show --query id -o tsv 2>$null
+if ($currentUserId) {
+    Write-Log "Assigning Storage Blob Data Contributor to current user on storage..."
+    az role assignment create `
+        --assignee $currentUserId `
+        --role "Storage Blob Data Contributor" `
+        --scope $storageId `
+        --output none 2>$null
+    # Wait briefly for RBAC propagation
+    Write-Log "  Waiting 15s for RBAC propagation..."
+    Start-Sleep -Seconds 15
+}
+
+# Create the pharma data container
 Write-Log "Creating blob container: pharma-commercial-data"
-$storageKey = az storage account keys list --account-name $storageNameClean --resource-group $sharedRg --query "[0].value" -o tsv 2>$null
-az storage container create `
+$savedErrorPref = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+
+# Try auth-mode login first, fall back to key if available
+$containerResult = az storage container create `
     --name pharma-commercial-data `
     --account-name $storageNameClean `
-    --account-key $storageKey `
-    --output none 2>$null
+    --auth-mode login `
+    --output none 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Log "  auth-mode login failed, trying with account key..." "WARN"
+    $storageKey = az storage account keys list --account-name $storageNameClean --resource-group $sharedRg --query "[0].value" -o tsv 2>$null
+    if ($storageKey) {
+        az storage container create `
+            --name pharma-commercial-data `
+            --account-name $storageNameClean `
+            --account-key $storageKey `
+            --output none 2>$null
+    } else {
+        Write-Log "  Could not retrieve storage key (key auth may be disabled). Container may need manual creation." "WARN"
+    }
+}
+
+$ErrorActionPreference = $savedErrorPref
 Write-Log "Blob container ready: pharma-commercial-data"
 
 # Upload sample data files if they exist locally
@@ -318,7 +355,7 @@ if (Test-Path $dataDir) {
             --container-name pharma-commercial-data `
             --file $csv.FullName `
             --name $csv.Name `
-            --account-key $storageKey `
+            --auth-mode login `
             --overwrite `
             --output none 2>$null
     }
@@ -327,11 +364,6 @@ if (Test-Path $dataDir) {
 else {
     Write-Log "Data directory not found at $dataDir - skipping sample data upload" "WARN"
 }
-
-$storageId = az storage account show `
-    --name $storageNameClean `
-    --resource-group $sharedRg `
-    --query id -o tsv
 
 # ============================================================================
 # Create Microsoft Foundry Resource (AI Services)
