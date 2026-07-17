@@ -81,6 +81,8 @@ The following have been set up in your lab environment:
 | Application Insights | Connected to Foundry project for tracing |
 | Azure Developer CLI (azd) | Pre-installed with Foundry extension |
 
+> **🛠️ Lab Organizers:** Use the [setup scripts](scripts/) to pre-create all resources and onboard users. See [scripts/README.md](scripts/README.md) for full instructions.
+
 ---
 
 ## Lab Links
