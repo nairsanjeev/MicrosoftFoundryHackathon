@@ -296,13 +296,15 @@ if ($existingStorage) {
 
 Write-Log "Storage Account ready: $storageNameClean"
 
-# Create the pharma data container
+# Create the pharma data container (use account key since RBAC may not have propagated yet)
 Write-Log "Creating blob container: pharma-commercial-data"
+$storageKey = az storage account keys list --account-name $storageNameClean --resource-group $sharedRg --query "[0].value" -o tsv 2>$null
 az storage container create `
     --name pharma-commercial-data `
     --account-name $storageNameClean `
-    --auth-mode login `
-    --output none
+    --account-key $storageKey `
+    --output none 2>$null
+Write-Log "Blob container ready: pharma-commercial-data"
 
 # Upload sample data files if they exist locally
 $dataDir = Join-Path $PSScriptRoot "..\data"
@@ -316,9 +318,9 @@ if (Test-Path $dataDir) {
             --container-name pharma-commercial-data `
             --file $csv.FullName `
             --name $csv.Name `
-            --auth-mode login `
+            --account-key $storageKey `
             --overwrite `
-            --output none
+            --output none 2>$null
     }
     Write-Log "Sample data uploaded successfully"
 }
