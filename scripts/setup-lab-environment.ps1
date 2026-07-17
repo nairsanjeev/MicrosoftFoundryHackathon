@@ -526,6 +526,8 @@ Write-Log "============================================"
 
 $userOutputs = @()
 $userIndex = 0
+$savedErrorPref = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 
 foreach ($user in $users) {
     $upn = $user.UserPrincipalName
@@ -546,26 +548,42 @@ foreach ($user in $users) {
     $sanitizedName = ($displayName -replace '[^a-zA-Z0-9]', '-').ToLower().TrimEnd('-')
     $projectName = "proj-pharma-$sanitizedName"
     
-    # Create Foundry Project for this user
-    Write-Log "  Creating Foundry project: $projectName"
-    
-    # Create project using REST API (az cognitiveservices doesn't directly support projects yet)
-    # We use the AI Foundry project creation via az resource
-    $projectResourceName = "$FoundryResourceName/projects/$projectName"
-    
-    az resource create `
+    # Check if project already exists
+    $existingProject = az resource show `
         --resource-group $sharedRg `
         --resource-type "Microsoft.CognitiveServices/accounts/projects" `
-        --name $projectResourceName `
-        --properties "{}" `
-        --output none 2>&1 | Out-Null
+        --name "$FoundryResourceName/$projectName" `
+        --query name -o tsv 2>$null
+    
+    if ($existingProject) {
+        Write-Log "  Project already exists: $projectName - skipping creation"
+    } else {
+        Write-Log "  Creating Foundry project: $projectName"
+        
+        # Use REST API to create project with proper properties
+        $projectBody = @{
+            location = $Location
+            identity = @{ type = "SystemAssigned" }
+            properties = @{}
+            sku = @{ name = "S0" }
+        } | ConvertTo-Json -Compress
+        
+        $projectResult = az rest --method PUT `
+            --url "https://management.azure.com/subscriptions/$SubscriptionId/resourceGroups/$sharedRg/providers/Microsoft.CognitiveServices/accounts/$FoundryResourceName/projects/${projectName}?api-version=2025-04-01-preview" `
+            --body $projectBody `
+            --output none 2>&1
 
-    if ($LASTEXITCODE -ne 0) {
-        Write-Log "  Note: Project creation via CLI may require portal. Will assign roles to main resource." "WARN"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Log "  Project creation note: $projectResult" "WARN"
+            Write-Log "  Users can still use the main Foundry resource. Roles will be assigned to the resource level." "WARN"
+        } else {
+            Write-Log "  Project created: $projectName"
+        }
     }
 
     # ========================================================================
     # Assign RBAC Roles - Users get LIMITED access (no model creation)
+    # Role assignments are idempotent - safe to re-run
     # ========================================================================
     
     # Foundry User (formerly Azure AI User) - Can use agents, models, tools but NOT create deployments
@@ -637,8 +655,10 @@ foreach ($user in $users) {
         SearchService     = $SearchServiceName
     }
 
-    Write-Log "  ✅ User $displayName onboarded successfully"
+    Write-Log "  User $displayName onboarded successfully"
 }
+
+$ErrorActionPreference = $savedErrorPref
 
 # ============================================================================
 # Grant Search Service access to Foundry resource (for Foundry IQ)
