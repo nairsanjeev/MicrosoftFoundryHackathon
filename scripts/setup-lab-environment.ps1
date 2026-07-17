@@ -144,7 +144,7 @@ az group create --name $sharedRg --location $Location --output none
 # ============================================================================
 $existingLA = az monitor log-analytics workspace show --resource-group $sharedRg --workspace-name $LogAnalyticsName --query id -o tsv 2>$null
 if ($existingLA) {
-    Write-Log "Log Analytics workspace already exists: $LogAnalyticsName — reusing"
+    Write-Log "Log Analytics workspace already exists: $LogAnalyticsName - reusing"
     $logAnalyticsId = $existingLA
 } else {
     Write-Log "Creating Log Analytics workspace: $LogAnalyticsName"
@@ -164,7 +164,7 @@ if ($existingLA) {
 # ============================================================================
 $existingAI = az monitor app-insights component show --app $AppInsightsName --resource-group $sharedRg --query id -o tsv 2>$null
 if ($existingAI) {
-    Write-Log "Application Insights already exists: $AppInsightsName — reusing"
+    Write-Log "Application Insights already exists: $AppInsightsName - reusing"
     $appInsightsId = $existingAI
     $appInsightsConnectionString = az monitor app-insights component show `
         --app $AppInsightsName `
@@ -196,7 +196,7 @@ Write-Log "Application Insights ready: $AppInsightsName"
 # First check if a search service already exists in the resource group
 $existingSearch = az search service list --resource-group $sharedRg --query "[0].name" -o tsv 2>$null
 if ($existingSearch) {
-    Write-Log "Azure AI Search already exists: $existingSearch — reusing"
+    Write-Log "Azure AI Search already exists: $existingSearch - reusing"
     $SearchServiceName = $existingSearch
 } else {
     Write-Log "Creating Azure AI Search: $SearchServiceName (Standard tier for Foundry IQ)"
@@ -250,7 +250,7 @@ if ($storageNameClean.Length -gt 24) { $storageNameClean = $storageNameClean.Sub
 # Check if a storage account already exists in the resource group
 $existingStorage = az storage account list --resource-group $sharedRg --query "[0].name" -o tsv 2>$null
 if ($existingStorage) {
-    Write-Log "Storage Account already exists: $existingStorage — reusing"
+    Write-Log "Storage Account already exists: $existingStorage - reusing"
     $storageNameClean = $existingStorage
 } else {
     Write-Log "Creating Storage Account: $storageNameClean"
@@ -328,9 +328,14 @@ $storageId = az storage account show `
 # Create Microsoft Foundry Resource (AI Services)
 # ============================================================================
 # Check if a Foundry (AI Services) resource already exists in the resource group
-$existingFoundry = az cognitiveservices account list --resource-group $sharedRg --query "[?kind=='AIServices'].name | [0]" -o tsv 2>$null
+$existingFoundry = $null
+$cogAccounts = az cognitiveservices account list --resource-group $sharedRg -o json 2>$null | ConvertFrom-Json
+if ($cogAccounts) {
+    $aiSvc = $cogAccounts | Where-Object { $_.kind -eq "AIServices" } | Select-Object -First 1
+    if ($aiSvc) { $existingFoundry = $aiSvc.name }
+}
 if ($existingFoundry) {
-    Write-Log "Foundry resource already exists: $existingFoundry — reusing"
+    Write-Log "Foundry resource already exists: $existingFoundry - reusing"
     $FoundryResourceName = $existingFoundry
 } else {
     Write-Log "Creating Microsoft Foundry resource: $FoundryResourceName"
@@ -581,18 +586,18 @@ $userOutputs | Export-Csv -Path $outputCsv -NoTypeInformation
 Write-Log "User assignments exported to: $outputCsv"
 Write-Log ""
 Write-Log "ROLES ASSIGNED PER USER:"
-Write-Log "  ✅ Foundry User (Azure AI User) - Use agents, tools, knowledge"
-Write-Log "  ✅ Cognitive Services User - Call model endpoints"
-Write-Log "  ✅ Storage Blob Data Contributor - Upload/download data"
-Write-Log "  ✅ Search Index Data Contributor - Query knowledge bases"
-Write-Log "  ✅ Search Service Contributor - Create knowledge bases"
-Write-Log "  ✅ Reader (Resource Group) - View resources"
-Write-Log "  ✅ Log Analytics Reader - View traces and monitoring"
+Write-Log "  [OK] Foundry User (Azure AI User) - Use agents, tools, knowledge"
+Write-Log "  [OK] Cognitive Services User - Call model endpoints"
+Write-Log "  [OK] Storage Blob Data Contributor - Upload/download data"
+Write-Log "  [OK] Search Index Data Contributor - Query knowledge bases"
+Write-Log "  [OK] Search Service Contributor - Create knowledge bases"
+Write-Log "  [OK] Reader (Resource Group) - View resources"
+Write-Log "  [OK] Log Analytics Reader - View traces and monitoring"
 Write-Log ""
 Write-Log "ROLES NOT ASSIGNED (restricted):"
-Write-Log "  ❌ Cognitive Services Contributor - Cannot create/delete model deployments"
-Write-Log "  ❌ Owner/Contributor - Cannot modify infrastructure"
-Write-Log "  ❌ Azure AI Account Owner - Cannot manage Foundry resource"
+Write-Log "  [NO] Cognitive Services Contributor - Cannot create/delete model deployments"
+Write-Log "  [NO] Owner/Contributor - Cannot modify infrastructure"
+Write-Log "  [NO] Azure AI Account Owner - Cannot manage Foundry resource"
 Write-Log ""
 Write-Log "Distribute the file '$outputCsv' to lab attendees with their connection info."
 Write-Log "Full log saved to: $logFile"
