@@ -142,52 +142,72 @@ az group create --name $sharedRg --location $Location --output none
 # ============================================================================
 # Create Log Analytics Workspace (shared)
 # ============================================================================
-Write-Log "Creating Log Analytics workspace: $LogAnalyticsName"
-az monitor log-analytics workspace create `
-    --resource-group $sharedRg `
-    --workspace-name $LogAnalyticsName `
-    --location $Location `
-    --output none
-
-$logAnalyticsId = az monitor log-analytics workspace show `
-    --resource-group $sharedRg `
-    --workspace-name $LogAnalyticsName `
-    --query id -o tsv
+$existingLA = az monitor log-analytics workspace show --resource-group $sharedRg --workspace-name $LogAnalyticsName --query id -o tsv 2>$null
+if ($existingLA) {
+    Write-Log "Log Analytics workspace already exists: $LogAnalyticsName — reusing"
+    $logAnalyticsId = $existingLA
+} else {
+    Write-Log "Creating Log Analytics workspace: $LogAnalyticsName"
+    az monitor log-analytics workspace create `
+        --resource-group $sharedRg `
+        --workspace-name $LogAnalyticsName `
+        --location $Location `
+        --output none
+    $logAnalyticsId = az monitor log-analytics workspace show `
+        --resource-group $sharedRg `
+        --workspace-name $LogAnalyticsName `
+        --query id -o tsv
+}
 
 # ============================================================================
 # Create Application Insights (shared)
 # ============================================================================
-Write-Log "Creating Application Insights: $AppInsightsName"
-az monitor app-insights component create `
-    --app $AppInsightsName `
-    --location $Location `
-    --resource-group $sharedRg `
-    --workspace $logAnalyticsId `
-    --output none
+$existingAI = az monitor app-insights component show --app $AppInsightsName --resource-group $sharedRg --query id -o tsv 2>$null
+if ($existingAI) {
+    Write-Log "Application Insights already exists: $AppInsightsName — reusing"
+    $appInsightsId = $existingAI
+    $appInsightsConnectionString = az monitor app-insights component show `
+        --app $AppInsightsName `
+        --resource-group $sharedRg `
+        --query connectionString -o tsv
+} else {
+    Write-Log "Creating Application Insights: $AppInsightsName"
+    az monitor app-insights component create `
+        --app $AppInsightsName `
+        --location $Location `
+        --resource-group $sharedRg `
+        --workspace $logAnalyticsId `
+        --output none
+    $appInsightsConnectionString = az monitor app-insights component show `
+        --app $AppInsightsName `
+        --resource-group $sharedRg `
+        --query connectionString -o tsv
+    $appInsightsId = az monitor app-insights component show `
+        --app $AppInsightsName `
+        --resource-group $sharedRg `
+        --query id -o tsv
+}
 
-$appInsightsConnectionString = az monitor app-insights component show `
-    --app $AppInsightsName `
-    --resource-group $sharedRg `
-    --query connectionString -o tsv
-
-$appInsightsId = az monitor app-insights component show `
-    --app $AppInsightsName `
-    --resource-group $sharedRg `
-    --query id -o tsv
-
-Write-Log "Application Insights created: $AppInsightsName"
+Write-Log "Application Insights ready: $AppInsightsName"
 
 # ============================================================================
 # Create Azure AI Search (shared)
 # ============================================================================
-Write-Log "Creating Azure AI Search: $SearchServiceName (Standard tier for Foundry IQ)"
-$searchCreated = $false
-$searchAttempt = 0
-$searchNameCandidate = $SearchServiceName
+# First check if a search service already exists in the resource group
+$existingSearch = az search service list --resource-group $sharedRg --query "[0].name" -o tsv 2>$null
+if ($existingSearch) {
+    Write-Log "Azure AI Search already exists: $existingSearch — reusing"
+    $SearchServiceName = $existingSearch
+} else {
+    Write-Log "Creating Azure AI Search: $SearchServiceName (Standard tier for Foundry IQ)"
+    $searchCreated = $false
+    $searchAttempt = 0
+    $searchNameCandidate = $SearchServiceName
+    $savedErrorPref = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
 
-while (-not $searchCreated -and $searchAttempt -lt 3) {
-    $searchAttempt++
-    try {
+    while (-not $searchCreated -and $searchAttempt -lt 5) {
+        $searchAttempt++
         $searchResult = az search service create `
             --name $searchNameCandidate `
             --resource-group $sharedRg `
@@ -199,19 +219,18 @@ while (-not $searchCreated -and $searchAttempt -lt 3) {
             $searchCreated = $true
             $SearchServiceName = $searchNameCandidate
         } else {
-            throw $searchResult
+            $retrySuffix = -join ((48..57) + (97..122) | Get-Random -Count 6 | ForEach-Object { [char]$_ })
+            $searchNameCandidate = "search-$retrySuffix"
+            Write-Log "  Name unavailable, retrying with '$searchNameCandidate' (attempt $searchAttempt/5)..." "WARN"
         }
     }
-    catch {
-        $retrySuffix = -join ((97..122) | Get-Random -Count 4 | ForEach-Object { [char]$_ })
-        $searchNameCandidate = "search-lab-$retrySuffix"
-        Write-Log "  Name '$SearchServiceName' unavailable, retrying with '$searchNameCandidate' (attempt $searchAttempt/3)..." "WARN"
-    }
-}
 
-if (-not $searchCreated) {
-    Write-Log "Failed to create Azure AI Search after 3 attempts. Try a different -SearchServiceName." "ERROR"
-    exit 1
+    $ErrorActionPreference = $savedErrorPref
+
+    if (-not $searchCreated) {
+        Write-Log "Failed to create Azure AI Search after 5 attempts. Try a different -SearchServiceName." "ERROR"
+        exit 1
+    }
 }
 
 $searchId = az search service show `
@@ -219,7 +238,7 @@ $searchId = az search service show `
     --resource-group $sharedRg `
     --query id -o tsv
 
-Write-Log "Azure AI Search created: $SearchServiceName"
+Write-Log "Azure AI Search ready: $SearchServiceName"
 
 # ============================================================================
 # Create Storage Account (shared for pharma data)
@@ -228,14 +247,21 @@ Write-Log "Azure AI Search created: $SearchServiceName"
 $storageNameClean = ($StorageAccountName -replace '[^a-z0-9]', '').ToLower()
 if ($storageNameClean.Length -gt 24) { $storageNameClean = $storageNameClean.Substring(0, 24) }
 
-Write-Log "Creating Storage Account: $storageNameClean"
-$storageCreated = $false
-$storageAttempt = 0
-$storageCandidate = $storageNameClean
+# Check if a storage account already exists in the resource group
+$existingStorage = az storage account list --resource-group $sharedRg --query "[0].name" -o tsv 2>$null
+if ($existingStorage) {
+    Write-Log "Storage Account already exists: $existingStorage — reusing"
+    $storageNameClean = $existingStorage
+} else {
+    Write-Log "Creating Storage Account: $storageNameClean"
+    $storageCreated = $false
+    $storageAttempt = 0
+    $storageCandidate = $storageNameClean
+    $savedErrorPref = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
 
-while (-not $storageCreated -and $storageAttempt -lt 3) {
-    $storageAttempt++
-    try {
+    while (-not $storageCreated -and $storageAttempt -lt 5) {
+        $storageAttempt++
         $storageResult = az storage account create `
             --name $storageCandidate `
             --resource-group $sharedRg `
@@ -247,22 +273,21 @@ while (-not $storageCreated -and $storageAttempt -lt 3) {
             $storageCreated = $true
             $storageNameClean = $storageCandidate
         } else {
-            throw $storageResult
+            $retrySuffix = -join ((48..57) + (97..122) | Get-Random -Count 6 | ForEach-Object { [char]$_ })
+            $storageCandidate = "stlab$retrySuffix"
+            Write-Log "  Name unavailable, retrying with '$storageCandidate' (attempt $storageAttempt/5)..." "WARN"
         }
     }
-    catch {
-        $retrySuffix = -join ((97..122) | Get-Random -Count 4 | ForEach-Object { [char]$_ })
-        $storageCandidate = "stlab$retrySuffix"
-        Write-Log "  Name '$storageNameClean' unavailable, retrying with '$storageCandidate' (attempt $storageAttempt/3)..." "WARN"
+
+    $ErrorActionPreference = $savedErrorPref
+
+    if (-not $storageCreated) {
+        Write-Log "Failed to create Storage Account after 5 attempts. Try a different -StorageAccountName." "ERROR"
+        exit 1
     }
 }
 
-if (-not $storageCreated) {
-    Write-Log "Failed to create Storage Account after 3 attempts. Try a different -StorageAccountName." "ERROR"
-    exit 1
-}
-
-Write-Log "Storage Account created: $storageNameClean"
+Write-Log "Storage Account ready: $storageNameClean"
 
 # Create the pharma data container
 Write-Log "Creating blob container: pharma-commercial-data"
@@ -302,14 +327,21 @@ $storageId = az storage account show `
 # ============================================================================
 # Create Microsoft Foundry Resource (AI Services)
 # ============================================================================
-Write-Log "Creating Microsoft Foundry resource: $FoundryResourceName"
-$foundryCreated = $false
-$foundryAttempt = 0
-$foundryCandidate = $FoundryResourceName
+# Check if a Foundry (AI Services) resource already exists in the resource group
+$existingFoundry = az cognitiveservices account list --resource-group $sharedRg --query "[?kind=='AIServices'].name | [0]" -o tsv 2>$null
+if ($existingFoundry) {
+    Write-Log "Foundry resource already exists: $existingFoundry — reusing"
+    $FoundryResourceName = $existingFoundry
+} else {
+    Write-Log "Creating Microsoft Foundry resource: $FoundryResourceName"
+    $foundryCreated = $false
+    $foundryAttempt = 0
+    $foundryCandidate = $FoundryResourceName
+    $savedErrorPref = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
 
-while (-not $foundryCreated -and $foundryAttempt -lt 3) {
-    $foundryAttempt++
-    try {
+    while (-not $foundryCreated -and $foundryAttempt -lt 5) {
+        $foundryAttempt++
         $foundryResult = az cognitiveservices account create `
             --name $foundryCandidate `
             --resource-group $sharedRg `
@@ -322,19 +354,18 @@ while (-not $foundryCreated -and $foundryAttempt -lt 3) {
             $foundryCreated = $true
             $FoundryResourceName = $foundryCandidate
         } else {
-            throw $foundryResult
+            $retrySuffix = -join ((97..122) | Get-Random -Count 4 | ForEach-Object { [char]$_ })
+            $foundryCandidate = "ai-foundry-lab-$retrySuffix"
+            Write-Log "  Name unavailable, retrying with '$foundryCandidate' (attempt $foundryAttempt/5)..." "WARN"
         }
     }
-    catch {
-        $retrySuffix = -join ((97..122) | Get-Random -Count 4 | ForEach-Object { [char]$_ })
-        $foundryCandidate = "ai-foundry-lab-$retrySuffix"
-        Write-Log "  Name '$FoundryResourceName' unavailable, retrying with '$foundryCandidate' (attempt $foundryAttempt/3)..." "WARN"
-    }
-}
 
-if (-not $foundryCreated) {
-    Write-Log "Failed to create Foundry resource after 3 attempts. Try a different -FoundryResourceName." "ERROR"
-    exit 1
+    $ErrorActionPreference = $savedErrorPref
+
+    if (-not $foundryCreated) {
+        Write-Log "Failed to create Foundry resource after 5 attempts. Try a different -FoundryResourceName." "ERROR"
+        exit 1
+    }
 }
 
 $foundryId = az cognitiveservices account show `
@@ -347,7 +378,7 @@ $foundryEndpoint = az cognitiveservices account show `
     --resource-group $sharedRg `
     --query "properties.endpoint" -o tsv
 
-Write-Log "Foundry resource created: $FoundryResourceName ($foundryEndpoint)"
+Write-Log "Foundry resource ready: $FoundryResourceName ($foundryEndpoint)"
 
 # ============================================================================
 # Deploy Models (shared across all projects)
