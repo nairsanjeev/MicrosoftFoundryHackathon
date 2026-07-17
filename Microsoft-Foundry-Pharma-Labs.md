@@ -290,53 +290,26 @@ python chat_agent.py
 - **Permission-Aware:** Respects document-level access controls
 - **Multi-Source:** Combines data from blob storage, SharePoint, databases, and web sources
 
-### 3.2 — Prepare Pharma Data Files
+### 3.2 — Download Pharma Data Files
 
-Create the following sample CSV files that represent typical pharma commercial data:
+The sample data files are pre-created and available in the [`data/`](data/) folder of this repository. Download all three files to your local machine:
 
-**File 1: `drug_pipeline.csv`**
-```csv
-Drug_Name,Therapeutic_Area,Phase,Indication,Expected_Approval,Revenue_Forecast_M
-ZV-4521,Oncology,Phase 3,Non-Small Cell Lung Cancer,Q2 2027,2400
-ZV-8832,Immunology,Phase 2,Rheumatoid Arthritis,Q4 2028,1800
-ZV-1104,Neurology,Phase 3,Alzheimer's Disease,Q1 2027,3200
-ZV-6677,Cardiovascular,Phase 2,Heart Failure,Q3 2028,950
-ZV-3390,Oncology,Phase 1,Pancreatic Cancer,Q2 2030,1500
-ZV-9901,Rare Disease,Phase 3,Spinal Muscular Atrophy,Q4 2026,800
-ZV-2245,Immunology,Phase 3,Psoriatic Arthritis,Q1 2027,1200
-ZV-5578,Infectious Disease,Phase 2,RSV Prophylaxis,Q2 2028,2100
+| File | Description | Download |
+|------|-------------|----------|
+| `drug_pipeline.csv` | Pipeline drugs across therapeutic areas with phase, indication, and revenue forecasts | [Download](data/drug_pipeline.csv) |
+| `quarterly_revenue.csv` | Q1-Q3 2026 revenue, units sold, and market share by product | [Download](data/quarterly_revenue.csv) |
+| `regulatory_milestones.csv` | FDA/EMA regulatory milestones and statuses | [Download](data/regulatory_milestones.csv) |
+
+**To download all files at once**, clone the repo or download the `data/` folder:
+```bash
+git clone https://github.com/nairsanjeev/MicrosoftFoundryHackathon.git
+cd MicrosoftFoundryHackathon/data
 ```
 
-**File 2: `quarterly_revenue.csv`**
-```csv
-Quarter,Therapeutic_Area,Product,Revenue_M,Units_Sold_K,Market_Share_Pct
-Q1 2026,Oncology,Zelvorix,890,145,23.5
-Q1 2026,Immunology,Revumab,620,210,18.2
-Q1 2026,Neurology,Cognivex,450,89,12.8
-Q1 2026,Cardiovascular,Cardivant,380,320,9.4
-Q2 2026,Oncology,Zelvorix,945,152,24.1
-Q2 2026,Immunology,Revumab,685,228,19.0
-Q2 2026,Neurology,Cognivex,510,98,13.5
-Q2 2026,Cardiovascular,Cardivant,395,335,9.7
-Q3 2026,Oncology,Zelvorix,1020,165,25.3
-Q3 2026,Immunology,Revumab,720,241,19.8
-Q3 2026,Neurology,Cognivex,535,104,14.1
-Q3 2026,Cardiovascular,Cardivant,410,348,10.1
-```
-
-**File 3: `regulatory_milestones.csv`**
-```csv
-Drug_Name,Milestone,Status,Date,Region,Notes
-Zelvorix,FDA Approval,Completed,2024-03-15,US,Accelerated approval for NSCLC
-Zelvorix,EMA Submission,Completed,2024-06-01,EU,Full application submitted
-Zelvorix,EMA Approval,Completed,2025-01-20,EU,Conditional marketing authorization
-Revumab,FDA BLA Submission,Completed,2025-09-10,US,Priority review granted
-Revumab,FDA Advisory Committee,Pending,2026-11-15,US,PDUFA date set
-ZV-4521,Phase 3 Topline Results,Completed,2026-04-22,Global,Met primary endpoint (PFS)
-ZV-4521,FDA NDA Submission,Planned,2026-09-01,US,Fast track designation
-ZV-1104,Phase 3 Interim Analysis,Completed,2026-06-15,Global,Positive efficacy signal
-Cognivex,Label Expansion Submission,Pending,2026-08-01,US,New indication: mild cognitive impairment
-```
+**What's in the data:**
+- **Drug Pipeline** — 8 drugs across 6 therapeutic areas in various clinical phases
+- **Quarterly Revenue** — 3 quarters of revenue data for 4 marketed products
+- **Regulatory Milestones** — FDA and EMA approval timelines and upcoming PDUFA dates
 
 ### 3.3 — Upload Data to Azure Storage
 
