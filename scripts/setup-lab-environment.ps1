@@ -447,30 +447,46 @@ Write-Log "Foundry resource ready: $FoundryResourceName ($foundryEndpoint)"
 # ============================================================================
 # Deploy Models (shared across all projects)
 # ============================================================================
-Write-Log "Deploying model: gpt-4.1 (Global Standard)"
-az cognitiveservices account deployment create `
+$savedErrorPref = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+
+# Check if deployments already exist
+$existingDeployments = az cognitiveservices account deployment list `
     --name $FoundryResourceName `
     --resource-group $sharedRg `
-    --deployment-name "gpt-4.1" `
-    --model-name "gpt-4.1" `
-    --model-version "2025-04-14" `
-    --model-format OpenAI `
-    --sku-capacity 10 `
-    --sku-name "GlobalStandard" `
-    --output none 2>&1 | Out-Null
+    --query "[].name" -o tsv 2>$null
 
-Write-Log "Deploying model: gpt-4.1-mini (Global Standard)"
-az cognitiveservices account deployment create `
-    --name $FoundryResourceName `
-    --resource-group $sharedRg `
-    --deployment-name "gpt-4.1-mini" `
-    --model-name "gpt-4.1-mini" `
-    --model-version "2025-04-14" `
-    --model-format OpenAI `
-    --sku-capacity 10 `
-    --sku-name "GlobalStandard" `
-    --output none 2>&1 | Out-Null
+if ($existingDeployments -match "gpt-4.1") {
+    Write-Log "Model gpt-4.1 already deployed - skipping"
+} else {
+    Write-Log "Deploying model: gpt-4.1 (Global Standard)"
+    az cognitiveservices account deployment create `
+        --name $FoundryResourceName `
+        --resource-group $sharedRg `
+        --deployment-name "gpt-4.1" `
+        --model-name "gpt-4.1" `
+        --model-format OpenAI `
+        --sku-capacity 10 `
+        --sku-name "GlobalStandard" `
+        --output none 2>&1 | Out-Null
+}
 
+if ($existingDeployments -match "gpt-4.1-mini") {
+    Write-Log "Model gpt-4.1-mini already deployed - skipping"
+} else {
+    Write-Log "Deploying model: gpt-4.1-mini (Global Standard)"
+    az cognitiveservices account deployment create `
+        --name $FoundryResourceName `
+        --resource-group $sharedRg `
+        --deployment-name "gpt-4.1-mini" `
+        --model-name "gpt-4.1-mini" `
+        --model-format OpenAI `
+        --sku-capacity 10 `
+        --sku-name "GlobalStandard" `
+        --output none 2>&1 | Out-Null
+}
+
+$ErrorActionPreference = $savedErrorPref
 Write-Log "Models deployed: gpt-4.1, gpt-4.1-mini"
 
 # ============================================================================
