@@ -208,20 +208,23 @@ if ($existingSearch) {
 
     while (-not $searchCreated -and $searchAttempt -lt 5) {
         $searchAttempt++
+        Write-Log "  Attempting to create: $searchNameCandidate (attempt $searchAttempt/5)..."
         $searchResult = az search service create `
             --name $searchNameCandidate `
             --resource-group $sharedRg `
             --sku standard `
             --location $Location `
             --identity-type SystemAssigned `
-            --output none 2>&1
+            --output json 2>&1
         if ($LASTEXITCODE -eq 0) {
             $searchCreated = $true
             $SearchServiceName = $searchNameCandidate
+            Write-Log "  Search service created successfully: $SearchServiceName"
         } else {
-            $retrySuffix = -join ((48..57) + (97..122) | Get-Random -Count 6 | ForEach-Object { [char]$_ })
-            $searchNameCandidate = "search-$retrySuffix"
-            Write-Log "  Name unavailable, retrying with '$searchNameCandidate' (attempt $searchAttempt/5)..." "WARN"
+            Write-Log "  Error: $searchResult" "WARN"
+            $retrySuffix = -join ((48..57) + (97..122) | Get-Random -Count 8 | ForEach-Object { [char]$_ })
+            $searchNameCandidate = "srch$retrySuffix"
+            Write-Log "  Retrying with '$searchNameCandidate'..." "WARN"
         }
     }
 
