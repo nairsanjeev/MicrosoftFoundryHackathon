@@ -199,39 +199,43 @@ if ($existingSearch) {
     Write-Log "Azure AI Search already exists: $existingSearch - reusing"
     $SearchServiceName = $existingSearch
 } else {
-    Write-Log "Creating Azure AI Search: $SearchServiceName (Standard tier for Foundry IQ)"
+    # Azure AI Search is a globally-provisioned resource. If the primary region
+    # is out of capacity, we try alternate regions automatically.
+    $searchRegions = @($Location, "westus3", "northcentralus", "eastus", "westus2", "swedencentral", "westeurope")
     $searchCreated = $false
-    $searchAttempt = 0
-    $searchNameCandidate = $SearchServiceName
     $savedErrorPref = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
 
-    while (-not $searchCreated -and $searchAttempt -lt 5) {
-        $searchAttempt++
-        Write-Log "  Attempting to create: $searchNameCandidate (attempt $searchAttempt/5)..."
+    foreach ($searchRegion in $searchRegions) {
+        if ($searchCreated) { break }
+        $retrySuffix = -join ((48..57) + (97..122) | Get-Random -Count 6 | ForEach-Object { [char]$_ })
+        $searchNameCandidate = "srch$retrySuffix"
+        Write-Log "  Trying region '$searchRegion' with name '$searchNameCandidate'..."
         $searchResult = az search service create `
             --name $searchNameCandidate `
             --resource-group $sharedRg `
             --sku standard `
-            --location $Location `
+            --location $searchRegion `
             --identity-type SystemAssigned `
             --output json 2>&1
         if ($LASTEXITCODE -eq 0) {
             $searchCreated = $true
             $SearchServiceName = $searchNameCandidate
-            Write-Log "  Search service created successfully: $SearchServiceName"
+            Write-Log "  Azure AI Search created: $SearchServiceName in $searchRegion"
         } else {
-            Write-Log "  Error: $searchResult" "WARN"
-            $retrySuffix = -join ((48..57) + (97..122) | Get-Random -Count 8 | ForEach-Object { [char]$_ })
-            $searchNameCandidate = "srch$retrySuffix"
-            Write-Log "  Retrying with '$searchNameCandidate'..." "WARN"
+            $errorMsg = "$searchResult"
+            if ($errorMsg -match "InsufficientResourcesAvailable") {
+                Write-Log "  Region '$searchRegion' is out of capacity, trying next region..." "WARN"
+            } else {
+                Write-Log "  Error in region '$searchRegion': $errorMsg" "WARN"
+            }
         }
     }
 
     $ErrorActionPreference = $savedErrorPref
 
     if (-not $searchCreated) {
-        Write-Log "Failed to create Azure AI Search after 5 attempts. Try a different -SearchServiceName." "ERROR"
+        Write-Log "Failed to create Azure AI Search in any region. Check subscription quotas." "ERROR"
         exit 1
     }
 }
