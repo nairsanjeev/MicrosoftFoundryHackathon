@@ -33,13 +33,13 @@ param(
     [string]$ResourceGroupPrefix = "rg-foundry-lab",
 
     [Parameter(Mandatory = $false)]
-    [string]$FoundryResourceName = "ai-foundry-lab",
+    [string]$FoundryResourceName = "",
 
     [Parameter(Mandatory = $false)]
-    [string]$SearchServiceName = "search-foundry-lab",
+    [string]$SearchServiceName = "",
 
     [Parameter(Mandatory = $false)]
-    [string]$StorageAccountName = "stfoundrylab",
+    [string]$StorageAccountName = "",
 
     [Parameter(Mandatory = $false)]
     [string]$AppInsightsName = "appi-foundry-lab",
@@ -54,6 +54,14 @@ param(
 $ErrorActionPreference = "Stop"
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $logFile = "./setup-log-$timestamp.txt"
+
+# Generate a short random suffix for globally-unique resource names
+$randomSuffix = -join ((97..122) | Get-Random -Count 5 | ForEach-Object { [char]$_ })
+
+# Apply suffix to globally-unique names if not explicitly provided
+if (-not $FoundryResourceName) { $FoundryResourceName = "ai-foundry-lab-$randomSuffix" }
+if (-not $SearchServiceName) { $SearchServiceName = "search-foundry-lab-$randomSuffix" }
+if (-not $StorageAccountName) { $StorageAccountName = "stfoundrylab$randomSuffix" }
 
 function Write-Log {
     param([string]$Message, [string]$Level = "INFO")
@@ -173,13 +181,38 @@ Write-Log "Application Insights created: $AppInsightsName"
 # Create Azure AI Search (shared)
 # ============================================================================
 Write-Log "Creating Azure AI Search: $SearchServiceName (Standard tier for Foundry IQ)"
-az search service create `
-    --name $SearchServiceName `
-    --resource-group $sharedRg `
-    --sku standard `
-    --location $Location `
-    --identity-type SystemAssigned `
-    --output none
+$searchCreated = $false
+$searchAttempt = 0
+$searchNameCandidate = $SearchServiceName
+
+while (-not $searchCreated -and $searchAttempt -lt 3) {
+    $searchAttempt++
+    try {
+        $searchResult = az search service create `
+            --name $searchNameCandidate `
+            --resource-group $sharedRg `
+            --sku standard `
+            --location $Location `
+            --identity-type SystemAssigned `
+            --output none 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            $searchCreated = $true
+            $SearchServiceName = $searchNameCandidate
+        } else {
+            throw $searchResult
+        }
+    }
+    catch {
+        $retrySuffix = -join ((97..122) | Get-Random -Count 4 | ForEach-Object { [char]$_ })
+        $searchNameCandidate = "search-lab-$retrySuffix"
+        Write-Log "  Name '$SearchServiceName' unavailable, retrying with '$searchNameCandidate' (attempt $searchAttempt/3)..." "WARN"
+    }
+}
+
+if (-not $searchCreated) {
+    Write-Log "Failed to create Azure AI Search after 3 attempts. Try a different -SearchServiceName." "ERROR"
+    exit 1
+}
 
 $searchId = az search service show `
     --name $SearchServiceName `
@@ -196,13 +229,40 @@ $storageNameClean = ($StorageAccountName -replace '[^a-z0-9]', '').ToLower()
 if ($storageNameClean.Length -gt 24) { $storageNameClean = $storageNameClean.Substring(0, 24) }
 
 Write-Log "Creating Storage Account: $storageNameClean"
-az storage account create `
-    --name $storageNameClean `
-    --resource-group $sharedRg `
-    --location $Location `
-    --sku Standard_LRS `
-    --kind StorageV2 `
-    --output none
+$storageCreated = $false
+$storageAttempt = 0
+$storageCandidate = $storageNameClean
+
+while (-not $storageCreated -and $storageAttempt -lt 3) {
+    $storageAttempt++
+    try {
+        $storageResult = az storage account create `
+            --name $storageCandidate `
+            --resource-group $sharedRg `
+            --location $Location `
+            --sku Standard_LRS `
+            --kind StorageV2 `
+            --output none 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            $storageCreated = $true
+            $storageNameClean = $storageCandidate
+        } else {
+            throw $storageResult
+        }
+    }
+    catch {
+        $retrySuffix = -join ((97..122) | Get-Random -Count 4 | ForEach-Object { [char]$_ })
+        $storageCandidate = "stlab$retrySuffix"
+        Write-Log "  Name '$storageNameClean' unavailable, retrying with '$storageCandidate' (attempt $storageAttempt/3)..." "WARN"
+    }
+}
+
+if (-not $storageCreated) {
+    Write-Log "Failed to create Storage Account after 3 attempts. Try a different -StorageAccountName." "ERROR"
+    exit 1
+}
+
+Write-Log "Storage Account created: $storageNameClean"
 
 # Create the pharma data container
 Write-Log "Creating blob container: pharma-commercial-data"
@@ -243,14 +303,39 @@ $storageId = az storage account show `
 # Create Microsoft Foundry Resource (AI Services)
 # ============================================================================
 Write-Log "Creating Microsoft Foundry resource: $FoundryResourceName"
-az cognitiveservices account create `
-    --name $FoundryResourceName `
-    --resource-group $sharedRg `
-    --kind AIServices `
-    --sku S0 `
-    --location $Location `
-    --custom-domain $FoundryResourceName `
-    --output none
+$foundryCreated = $false
+$foundryAttempt = 0
+$foundryCandidate = $FoundryResourceName
+
+while (-not $foundryCreated -and $foundryAttempt -lt 3) {
+    $foundryAttempt++
+    try {
+        $foundryResult = az cognitiveservices account create `
+            --name $foundryCandidate `
+            --resource-group $sharedRg `
+            --kind AIServices `
+            --sku S0 `
+            --location $Location `
+            --custom-domain $foundryCandidate `
+            --output none 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            $foundryCreated = $true
+            $FoundryResourceName = $foundryCandidate
+        } else {
+            throw $foundryResult
+        }
+    }
+    catch {
+        $retrySuffix = -join ((97..122) | Get-Random -Count 4 | ForEach-Object { [char]$_ })
+        $foundryCandidate = "ai-foundry-lab-$retrySuffix"
+        Write-Log "  Name '$FoundryResourceName' unavailable, retrying with '$foundryCandidate' (attempt $foundryAttempt/3)..." "WARN"
+    }
+}
+
+if (-not $foundryCreated) {
+    Write-Log "Failed to create Foundry resource after 3 attempts. Try a different -FoundryResourceName." "ERROR"
+    exit 1
+}
 
 $foundryId = az cognitiveservices account show `
     --name $FoundryResourceName `
@@ -262,7 +347,7 @@ $foundryEndpoint = az cognitiveservices account show `
     --resource-group $sharedRg `
     --query "properties.endpoint" -o tsv
 
-Write-Log "Foundry resource created: $foundryEndpoint"
+Write-Log "Foundry resource created: $FoundryResourceName ($foundryEndpoint)"
 
 # ============================================================================
 # Deploy Models (shared across all projects)
