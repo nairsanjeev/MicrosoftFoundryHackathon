@@ -102,7 +102,7 @@ if (-not (Test-Path $UsersFile)) {
 }
 
 # Read users
-$users = Import-Csv -Path $UsersFile
+$users = @(Import-Csv -Path $UsersFile)
 $userCount = $users.Count
 Write-Log "Found $userCount users to onboard"
 
@@ -498,11 +498,12 @@ Write-Log "Creating per-user projects and assigning roles..."
 Write-Log "============================================"
 
 $userOutputs = @()
+$userIndex = 0
 
 foreach ($user in $users) {
     $upn = $user.UserPrincipalName
     $displayName = $user.DisplayName
-    $userIndex = [array]::IndexOf($users, $user) + 1
+    $userIndex++
     
     Write-Log ""
     Write-Log "--- User $userIndex/$userCount : $displayName ($upn) ---"
