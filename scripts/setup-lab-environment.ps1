@@ -445,27 +445,31 @@ $foundryEndpoint = az cognitiveservices account show `
 Write-Log "Foundry resource ready: $FoundryResourceName ($foundryEndpoint)"
 
 # Enable system-assigned managed identity on Foundry resource (required for projects)
-Write-Log "Enabling managed identity on Foundry resource..."
-az cognitiveservices account update `
-    --name $FoundryResourceName `
-    --resource-group $sharedRg `
-    --identity-type SystemAssigned `
-    --output none 2>$null
-
-# Verify identity is enabled
 $identityType = az cognitiveservices account show `
     --name $FoundryResourceName `
     --resource-group $sharedRg `
     --query "identity.type" -o tsv 2>$null
-Write-Log "Managed identity status: $identityType"
 
-if ($identityType -ne "SystemAssigned") {
-    Write-Log "WARNING: Managed identity may not be enabled. Project creation may fail." "WARN"
+if ($identityType -eq "SystemAssigned") {
+    Write-Log "Managed identity already enabled on Foundry resource"
+} else {
+    Write-Log "Enabling managed identity on Foundry resource..."
+    az resource update `
+        --ids $foundryId `
+        --set identity.type=SystemAssigned `
+        --output none 2>$null
+
+    # Verify identity is enabled
+    $identityType = az cognitiveservices account show `
+        --name $FoundryResourceName `
+        --resource-group $sharedRg `
+        --query "identity.type" -o tsv 2>$null
+    Write-Log "Managed identity status: $identityType"
+
+    # Wait for identity propagation
+    Write-Log "Waiting 30s for managed identity propagation..."
+    Start-Sleep -Seconds 30
 }
-
-# Wait for identity propagation
-Write-Log "Waiting 30s for managed identity propagation..."
-Start-Sleep -Seconds 30
 
 # ============================================================================
 # Deploy Models (shared across all projects)
