@@ -630,6 +630,7 @@ foreach ($user in $users) {
         Write-Log "  Creating Foundry project: $projectName"
 
         # Build the project body - reference the parent Foundry hub resource
+        # Write to temp file to avoid PowerShell JSON quoting issues with az rest
         $projectBody = @{
             location   = $Location
             identity   = @{ type = "SystemAssigned" }
@@ -637,11 +638,13 @@ foreach ($user in $users) {
                 displayName = "$displayName - Pharma Lab"
             }
             sku        = @{ name = "S0" }
-        } | ConvertTo-Json -Depth 4 -Compress
+        } | ConvertTo-Json -Depth 4
+        $tempBodyFile = [System.IO.Path]::GetTempFileName()
+        Set-Content -Path $tempBodyFile -Value $projectBody -Encoding UTF8
 
         $projectResult = az rest --method PUT `
             --url $projectUrl `
-            --body $projectBody `
+            --body "@$tempBodyFile" `
             --headers "Content-Type=application/json" `
             --output json 2>&1
 
@@ -653,11 +656,12 @@ foreach ($user in $users) {
                 location   = $Location
                 properties = @{}
                 sku        = @{ name = "S0" }
-            } | ConvertTo-Json -Depth 4 -Compress
+            } | ConvertTo-Json -Depth 4
+            Set-Content -Path $tempBodyFile -Value $minimalBody -Encoding UTF8
 
             $projectResult = az rest --method PUT `
                 --url $projectUrl `
-                --body $minimalBody `
+                --body "@$tempBodyFile" `
                 --headers "Content-Type=application/json" `
                 --output json 2>&1
 
@@ -666,6 +670,9 @@ foreach ($user in $users) {
                 Write-Log "  Skipping project for $displayName - roles will be assigned at resource level" "WARN"
             }
         }
+
+        # Clean up temp file
+        Remove-Item -Path $tempBodyFile -Force -ErrorAction SilentlyContinue
 
         if ($LASTEXITCODE -eq 0) {
             $projectId = ($projectResult | ConvertFrom-Json).id
