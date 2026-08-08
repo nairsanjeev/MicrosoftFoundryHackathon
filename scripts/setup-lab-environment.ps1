@@ -544,65 +544,123 @@ foreach ($user in $users) {
         continue
     }
 
-    # Create a project name based on user (sanitized)
+    # Create a project name based on user (sanitized, must be unique)
     $sanitizedName = ($displayName -replace '[^a-zA-Z0-9]', '-').ToLower().TrimEnd('-')
+    if ($sanitizedName.Length -gt 30) { $sanitizedName = $sanitizedName.Substring(0, 30).TrimEnd('-') }
     $projectName = "proj-pharma-$sanitizedName"
-    
+
+    # ========================================================================
+    # Create Foundry Project for this user
+    # ========================================================================
+    $projectId = $null
+    $projectUrl = "https://management.azure.com/subscriptions/$SubscriptionId/resourceGroups/$sharedRg/providers/Microsoft.CognitiveServices/accounts/$FoundryResourceName/projects/${projectName}?api-version=2025-04-01-preview"
+
     # Check if project already exists
-    $existingProject = az resource show `
-        --resource-group $sharedRg `
-        --resource-type "Microsoft.CognitiveServices/accounts/projects" `
-        --name "$FoundryResourceName/$projectName" `
-        --query name -o tsv 2>$null
-    
-    if ($existingProject) {
-        Write-Log "  Project already exists: $projectName - skipping creation"
+    $existingProjectJson = az rest --method GET --url $projectUrl --output json 2>$null
+    if ($LASTEXITCODE -eq 0 -and $existingProjectJson) {
+        $projectId = ($existingProjectJson | ConvertFrom-Json).id
+        Write-Log "  Project already exists: $projectName - reusing"
     } else {
         Write-Log "  Creating Foundry project: $projectName"
-        
-        # Use REST API to create project with proper properties
+
+        # Build the project body - reference the parent Foundry hub resource
         $projectBody = @{
-            location = $Location
-            identity = @{ type = "SystemAssigned" }
-            properties = @{}
-            sku = @{ name = "S0" }
-        } | ConvertTo-Json -Compress
-        
+            location   = $Location
+            identity   = @{ type = "SystemAssigned" }
+            properties = @{
+                displayName = "$displayName - Pharma Lab"
+            }
+            sku        = @{ name = "S0" }
+        } | ConvertTo-Json -Depth 4 -Compress
+
         $projectResult = az rest --method PUT `
-            --url "https://management.azure.com/subscriptions/$SubscriptionId/resourceGroups/$sharedRg/providers/Microsoft.CognitiveServices/accounts/$FoundryResourceName/projects/${projectName}?api-version=2025-04-01-preview" `
+            --url $projectUrl `
             --body $projectBody `
-            --output none 2>&1
+            --output json 2>&1
 
         if ($LASTEXITCODE -ne 0) {
-            Write-Log "  Project creation note: $projectResult" "WARN"
-            Write-Log "  Users can still use the main Foundry resource. Roles will be assigned to the resource level." "WARN"
-        } else {
-            Write-Log "  Project created: $projectName"
+            Write-Log "  ERROR creating project: $projectResult" "ERROR"
+            Write-Log "  Retrying with simpler body..." "WARN"
+            # Retry with minimal body (some API versions reject extra fields)
+            $minimalBody = @{
+                location   = $Location
+                properties = @{}
+                sku        = @{ name = "S0" }
+            } | ConvertTo-Json -Depth 4 -Compress
+
+            $projectResult = az rest --method PUT `
+                --url $projectUrl `
+                --body $minimalBody `
+                --output json 2>&1
+
+            if ($LASTEXITCODE -ne 0) {
+                Write-Log "  Project creation FAILED: $projectResult" "ERROR"
+                Write-Log "  Skipping project for $displayName - roles will be assigned at resource level" "WARN"
+            }
+        }
+
+        if ($LASTEXITCODE -eq 0) {
+            $projectId = ($projectResult | ConvertFrom-Json).id
+            Write-Log "  Project created successfully: $projectName"
+            # Wait briefly for ARM propagation
+            Start-Sleep -Seconds 10
         }
     }
 
-    # ========================================================================
-    # Assign RBAC Roles - Users get LIMITED access (no model creation)
-    # Role assignments are idempotent - safe to re-run
-    # ========================================================================
-    
-    # Foundry User (formerly Azure AI User) - Can use agents, models, tools but NOT create deployments
-    Write-Log "  Assigning Foundry User role..."
-    az role assignment create `
-        --assignee $userObjectId `
-        --role "Azure AI User" `
-        --scope $foundryId `
-        --output none 2>&1 | Out-Null
+    # If project creation succeeded, get the project resource ID for scoped role assignment
+    if (-not $projectId) {
+        # Fallback: try to retrieve it
+        $fallbackJson = az rest --method GET --url $projectUrl --output json 2>$null
+        if ($LASTEXITCODE -eq 0 -and $fallbackJson) {
+            $projectId = ($fallbackJson | ConvertFrom-Json).id
+        }
+    }
 
-    # Cognitive Services Contributor - Allows creating Foundry projects and managing deployments
-    Write-Log "  Assigning Cognitive Services Contributor (Foundry resource scope)..."
+    # Determine the scope for role assignments (project if available, otherwise Foundry resource)
+    $roleScope = if ($projectId) { $projectId } else { $foundryId }
+    $scopeLabel = if ($projectId) { "project" } else { "resource" }
+    Write-Log "  Role assignment scope: $scopeLabel ($roleScope)"
+
+    # ========================================================================
+    # Assign RBAC Roles
+    # Roles are assigned at the PROJECT scope so the user lands directly in
+    # their project in the portal. Role assignments are idempotent.
+    # ========================================================================
+
+    # Cognitive Services Contributor - Allows full access to the project (create agents, use models, manage knowledge)
+    Write-Log "  Assigning Cognitive Services Contributor ($scopeLabel scope)..."
     az role assignment create `
         --assignee $userObjectId `
         --role "Cognitive Services Contributor" `
-        --scope $foundryId `
+        --scope $roleScope `
         --output none 2>&1 | Out-Null
 
-    # Storage Blob Data Contributor - Can upload/download data for Foundry IQ
+    # Azure AI User - Foundry-specific actions (agents, tools)
+    Write-Log "  Assigning Azure AI User ($scopeLabel scope)..."
+    az role assignment create `
+        --assignee $userObjectId `
+        --role "Azure AI User" `
+        --scope $roleScope `
+        --output none 2>&1 | Out-Null
+
+    # Cognitive Services User - Call model endpoints
+    Write-Log "  Assigning Cognitive Services User ($scopeLabel scope)..."
+    az role assignment create `
+        --assignee $userObjectId `
+        --role "Cognitive Services User" `
+        --scope $roleScope `
+        --output none 2>&1 | Out-Null
+
+    # Also assign at the parent Foundry resource level for model access
+    if ($projectId) {
+        az role assignment create `
+            --assignee $userObjectId `
+            --role "Cognitive Services User" `
+            --scope $foundryId `
+            --output none 2>&1 | Out-Null
+    }
+
+    # Storage Blob Data Contributor - Upload/download data for Foundry IQ
     Write-Log "  Assigning Storage Blob Data Contributor..."
     az role assignment create `
         --assignee $userObjectId `
@@ -610,7 +668,7 @@ foreach ($user in $users) {
         --scope $storageId `
         --output none 2>&1 | Out-Null
 
-    # Search Index Data Contributor - Can create/query knowledge bases
+    # Search Index Data Contributor - Query knowledge bases
     Write-Log "  Assigning Search Index Data Contributor..."
     az role assignment create `
         --assignee $userObjectId `
@@ -618,7 +676,7 @@ foreach ($user in $users) {
         --scope $searchId `
         --output none 2>&1 | Out-Null
 
-    # Search Service Contributor - Can create knowledge bases
+    # Search Service Contributor - Create knowledge bases
     Write-Log "  Assigning Search Service Contributor..."
     az role assignment create `
         --assignee $userObjectId `
@@ -626,15 +684,7 @@ foreach ($user in $users) {
         --scope $searchId `
         --output none 2>&1 | Out-Null
 
-    # Cognitive Services User - Can call model endpoints
-    Write-Log "  Assigning Cognitive Services User..."
-    az role assignment create `
-        --assignee $userObjectId `
-        --role "Cognitive Services User" `
-        --scope $foundryId `
-        --output none 2>&1 | Out-Null
-
-    # Reader on resource group - Can see resources but not modify infrastructure
+    # Reader on resource group - View resources in portal
     Write-Log "  Assigning Reader on resource group..."
     az role assignment create `
         --assignee $userObjectId `
@@ -642,7 +692,7 @@ foreach ($user in $users) {
         --scope "/subscriptions/$SubscriptionId/resourceGroups/$sharedRg" `
         --output none 2>&1 | Out-Null
 
-    # Log Analytics Reader - Can view traces
+    # Log Analytics Reader - View traces
     Write-Log "  Assigning Log Analytics Reader..."
     az role assignment create `
         --assignee $userObjectId `
@@ -650,12 +700,16 @@ foreach ($user in $users) {
         --scope $appInsightsId `
         --output none 2>&1 | Out-Null
 
+    # Build the direct portal URL for this project
+    $directProjectUrl = "https://ai.azure.com/project/$projectName/overview?wsid=/subscriptions/$SubscriptionId/resourceGroups/$sharedRg/providers/Microsoft.CognitiveServices/accounts/$FoundryResourceName/projects/$projectName"
+
     # Collect output for user info sheet
     $userOutputs += [PSCustomObject]@{
         DisplayName       = $displayName
         UserPrincipalName = $upn
         ProjectName       = $projectName
-        ProjectEndpoint   = "https://$FoundryResourceName.ai.azure.com/api/projects/$projectName"
+        ProjectResourceId = $projectId
+        DirectPortalURL   = $directProjectUrl
         PortalURL         = "https://ai.azure.com"
         ModelDeployments  = "gpt-4.1, gpt-4.1-mini"
         StorageAccount    = $storageNameClean
@@ -717,7 +771,8 @@ $userOutputs | Export-Csv -Path $outputCsv -NoTypeInformation
 Write-Log "User assignments exported to: $outputCsv"
 Write-Log ""
 Write-Log "ROLES ASSIGNED PER USER:"
-Write-Log "  [OK] Foundry User (Azure AI User) - Use agents, tools, knowledge"
+Write-Log "  [OK] Cognitive Services Contributor - Full project access (agents, tools, knowledge)"
+Write-Log "  [OK] Azure AI User - Foundry-specific actions"
 Write-Log "  [OK] Cognitive Services User - Call model endpoints"
 Write-Log "  [OK] Storage Blob Data Contributor - Upload/download data"
 Write-Log "  [OK] Search Index Data Contributor - Query knowledge bases"
@@ -726,7 +781,6 @@ Write-Log "  [OK] Reader (Resource Group) - View resources"
 Write-Log "  [OK] Log Analytics Reader - View traces and monitoring"
 Write-Log ""
 Write-Log "ROLES NOT ASSIGNED (restricted):"
-Write-Log "  [NO] Cognitive Services Contributor - Cannot create/delete model deployments"
 Write-Log "  [NO] Owner/Contributor - Cannot modify infrastructure"
 Write-Log "  [NO] Azure AI Account Owner - Cannot manage Foundry resource"
 Write-Log ""
