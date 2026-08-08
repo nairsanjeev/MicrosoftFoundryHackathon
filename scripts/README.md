@@ -8,7 +8,10 @@ These scripts automate the creation of all Azure resources needed for the Micros
 
 - **Azure CLI** installed ([Install guide](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli))
 - **Owner role** on the target Azure subscription
-- **Logged in**: `az login`
+- **PowerShell** 5.1 (included with Windows) or PowerShell 7 (`pwsh`)
+- **Logged in** to Azure CLI: `az login`
+
+> Run the commands below from **PowerShell**, not by double-clicking the `.ps1` file in File Explorer. If Windows opens the script in Notepad, the file association is being used instead of PowerShell. Use the explicit `powershell -File` or `pwsh -File` command shown below.
 
 ## Quick Start
 
@@ -22,18 +25,72 @@ john.doe@yourcompany.com,John Doe
 jane.smith@yourcompany.com,Jane Smith
 ```
 
-### 2. Run the setup script
+### 2. Open PowerShell and go to the scripts folder
+
+Open **Windows PowerShell** or **PowerShell** from the Start menu. Then change to the folder that contains the script. For this repository:
 
 ```powershell
-cd scripts
+cd C:\MicrosoftFOundryHackathon\scripts
+```
 
-./setup-lab-environment.ps1 `
+Confirm that the script and CSV are in the current folder:
+
+```powershell
+Get-ChildItem .\setup-lab-environment.ps1, .\users-sample.csv
+```
+
+### 3. Sign in and select the subscription
+
+Sign in to Azure CLI and verify the subscription ID before starting resource creation:
+
+```powershell
+az login
+az account list --output table
+az account set --subscription "your-subscription-id"
+az account show --output table
+```
+
+Replace `your-subscription-id` with the actual subscription ID. The signed-in account must have the **Owner** role on that subscription because the script creates resources and assigns roles to lab users.
+
+### 4. Run the setup script
+
+Use one of these explicit PowerShell commands. The `-File` form prevents Windows from opening the `.ps1` file in Notepad.
+
+**Windows PowerShell 5.1:**
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\setup-lab-environment.ps1 `
   -SubscriptionId "your-subscription-id" `
   -Location "eastus2" `
   -UsersFile "./users-sample.csv"
 ```
 
-### 3. Optional parameters
+**PowerShell 7:**
+
+```powershell
+pwsh.exe -File .\setup-lab-environment.ps1 `
+  -SubscriptionId "your-subscription-id" `
+  -Location "eastus2" `
+  -UsersFile ".\users-sample.csv"
+```
+
+You can also run the script directly after changing the execution policy for the current PowerShell process:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\setup-lab-environment.ps1 `
+  -SubscriptionId "your-subscription-id" `
+  -Location "eastus2" `
+  -UsersFile ".\users-sample.csv"
+```
+
+The backtick (`` ` ``) at the end of each continued line is a PowerShell line-continuation character. Make sure there are no spaces after it. Alternatively, put all parameters on one line:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\setup-lab-environment.ps1 -SubscriptionId "your-subscription-id" -Location "eastus2" -UsersFile ".\users-sample.csv"
+```
+
+### 5. Optional parameters
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -113,6 +170,11 @@ az group delete --name rg-foundry-lab-shared --yes --no-wait
 
 | Issue | Solution |
 |-------|----------|
+| The `.ps1` file opens in Notepad | Open PowerShell, run `cd C:\MicrosoftFOundryHackathon\scripts`, and use `powershell.exe -ExecutionPolicy Bypass -File .\setup-lab-environment.ps1 ...`. Do not double-click the file or run it from a file-association prompt. |
+| `running scripts is disabled on this system` | Use `powershell.exe -ExecutionPolicy Bypass -File .\setup-lab-environment.ps1 ...`, or run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` before using `.\setup-lab-environment.ps1`. |
+| `az` is not recognized | Install Azure CLI, restart PowerShell, and verify with `az --version`. |
+| `az account set` fails | Run `az login`, check the subscription with `az account list --output table`, and confirm that the subscription ID is correct. |
+| `Users file not found` | Run the command from the `scripts` folder or provide an absolute path, such as `-UsersFile "C:\MicrosoftFOundryHackathon\scripts\users-sample.csv"`. |
 | "SubscriptionNotRegistered" | The script registers providers automatically. If it fails, manually run: `az provider register --namespace Microsoft.CognitiveServices` |
 | Model deployment fails | Check quota in the selected region. Try `eastus2`, `westus3`, or `swedencentral` |
 | User not found | Ensure the UPN in users.csv matches the Entra ID exactly |
