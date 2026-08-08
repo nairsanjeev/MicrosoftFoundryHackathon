@@ -718,22 +718,13 @@ foreach ($user in $users) {
         --scope $roleScope `
         --output none 2>&1 | Out-Null
 
-    # Cognitive Services User - Call model endpoints
+    # Cognitive Services User - Call model endpoints (project scope only for isolation)
     Write-Log "  Assigning Cognitive Services User ($scopeLabel scope)..."
     az role assignment create `
         --assignee $userObjectId `
         --role "Cognitive Services User" `
         --scope $roleScope `
         --output none 2>&1 | Out-Null
-
-    # Also assign at the parent Foundry resource level for model access
-    if ($projectId) {
-        az role assignment create `
-            --assignee $userObjectId `
-            --role "Cognitive Services User" `
-            --scope $foundryId `
-            --output none 2>&1 | Out-Null
-    }
 
     # Storage Blob Data Contributor - Upload/download data for Foundry IQ
     Write-Log "  Assigning Storage Blob Data Contributor..."
@@ -759,13 +750,16 @@ foreach ($user in $users) {
         --scope $searchId `
         --output none 2>&1 | Out-Null
 
-    # Reader on resource group - View resources in portal
-    Write-Log "  Assigning Reader on resource group..."
-    az role assignment create `
-        --assignee $userObjectId `
-        --role "Reader" `
-        --scope "/subscriptions/$SubscriptionId/resourceGroups/$sharedRg" `
-        --output none 2>&1 | Out-Null
+    # Reader on own project only - prevents seeing other users' projects
+    # (Do NOT assign Reader on the full resource group - that exposes all projects)
+    if ($projectId) {
+        Write-Log "  Assigning Reader on own project..."
+        az role assignment create `
+            --assignee $userObjectId `
+            --role "Reader" `
+            --scope $projectId `
+            --output none 2>&1 | Out-Null
+    }
 
     # Log Analytics Reader - View traces
     Write-Log "  Assigning Log Analytics Reader..."
@@ -848,11 +842,11 @@ Write-Log ""
 Write-Log "ROLES ASSIGNED PER USER:"
 Write-Log "  [OK] Cognitive Services Contributor - Full project access (agents, tools, knowledge)"
 Write-Log "  [OK] Azure AI User - Foundry-specific actions"
-Write-Log "  [OK] Cognitive Services User - Call model endpoints"
+Write-Log "  [OK] Cognitive Services User - Call model endpoints (project-scoped)"
 Write-Log "  [OK] Storage Blob Data Contributor - Upload/download data"
 Write-Log "  [OK] Search Index Data Contributor - Query knowledge bases"
 Write-Log "  [OK] Search Service Contributor - Create knowledge bases"
-Write-Log "  [OK] Reader (Resource Group) - View resources"
+Write-Log "  [OK] Reader (Own Project) - View own project only"
 Write-Log "  [OK] Log Analytics Reader - View traces and monitoring"
 Write-Log ""
 Write-Log "ROLES NOT ASSIGNED (restricted):"
