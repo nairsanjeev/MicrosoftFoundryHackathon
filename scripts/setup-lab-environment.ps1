@@ -615,12 +615,17 @@ foreach ($user in $users) {
     # ========================================================================
     $projectId = $null
     $projectUrl = "https://management.azure.com/subscriptions/$SubscriptionId/resourceGroups/$sharedRg/providers/Microsoft.CognitiveServices/accounts/$FoundryResourceName/projects/${projectName}?api-version=2025-04-01-preview"
+    Write-Log "  Project URL: .../$FoundryResourceName/projects/$projectName"
 
     # Check if project already exists
     $existingProjectJson = az rest --method GET --url $projectUrl --output json 2>$null
-    if ($LASTEXITCODE -eq 0 -and $existingProjectJson) {
-        $projectId = ($existingProjectJson | ConvertFrom-Json).id
-        Write-Log "  Project already exists: $projectName - reusing"
+    $getExitCode = $LASTEXITCODE
+    Write-Log "  Checking project existence: GET returned exit code $getExitCode"
+    if ($getExitCode -eq 0 -and $existingProjectJson) {
+        $existingProject = $existingProjectJson | ConvertFrom-Json
+        $projectId = $existingProject.id
+        $provisioningState = $existingProject.properties.provisioningState
+        Write-Log "  Project already exists: $projectName (state: $provisioningState) - reusing"
     } else {
         Write-Log "  Creating Foundry project: $projectName"
 
