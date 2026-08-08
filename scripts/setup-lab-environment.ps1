@@ -576,6 +576,7 @@ foreach ($user in $users) {
         $projectResult = az rest --method PUT `
             --url $projectUrl `
             --body $projectBody `
+            --headers "Content-Type=application/json" `
             --output json 2>&1
 
         if ($LASTEXITCODE -ne 0) {
@@ -591,6 +592,7 @@ foreach ($user in $users) {
             $projectResult = az rest --method PUT `
                 --url $projectUrl `
                 --body $minimalBody `
+                --headers "Content-Type=application/json" `
                 --output json 2>&1
 
             if ($LASTEXITCODE -ne 0) {
