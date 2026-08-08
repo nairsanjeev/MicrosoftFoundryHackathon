@@ -42,64 +42,74 @@ cd MicrosoftFoundryHackathon/data
 
 ---
 
-## 3.3 — Upload Data to Azure Storage
+## 3.3 — Verify Pre-Uploaded Data
 
-1. In the **Azure Portal** (portal.azure.com), navigate to your Storage Account
-2. Go to **Containers** → Create a new container: `pharma-commercial-data`
-3. Upload all three CSV files to this container
-4. Verify the files are accessible
+Your lab administrator has already uploaded the pharma data files to Azure Blob Storage. You can verify them:
 
-Alternatively, use Azure CLI:
-```bash
-az storage blob upload-batch \
-  --account-name <your-storage-account> \
-  --destination pharma-commercial-data \
-  --source ./data/ \
-  --auth-mode login
-```
+1. In the **Azure Portal** (portal.azure.com), navigate to the Storage Account (name shown in your lab assignment sheet)
+2. Go to **Containers** → `pharma-commercial-data`
+3. Confirm the three CSV files are present: `drug_pipeline.csv`, `quarterly_revenue.csv`, `regulatory_milestones.csv`
+
+> **Note:** If you don't see the container or files, ask your lab admin to re-run the setup script.
 
 ---
 
-## 3.4 — Create a Knowledge Source in Azure AI Search
+## 3.4 — Create a Foundry IQ Knowledge Base
 
-The knowledge source connects Azure AI Search to your blob storage data.
+Use the **Knowledge** tab in the Foundry portal to create a knowledge base backed by your pharma data.
 
-1. In the **Foundry portal**, go to **Knowledge** in the left navigation
-2. Click **+ New Knowledge Base**
-3. Configure:
+1. In the **Foundry portal** (ai.azure.com), open your project (e.g., `proj-pharma-john-doe`)
+2. In the left navigation, click **Knowledge**
+3. Click the **Knowledge bases** tab, then **+ New knowledge base**
+4. In the "Create Foundry IQ resource" dialog, configure:
+
+| Setting | Value |
+|---------|-------|
+| **Resource name** | Leave the auto-generated name (e.g., your project name) |
+| **Subscription** | Your lab subscription |
+| **Resource group** | `rg-foundry-lab-shared` |
+| **Region** | Select a region with available capacity (try **East US 2**, or **West US 3** if at capacity) |
+
+5. Click **Create** and wait for the resource to provision
+
+> **⚠️ Region at capacity?** If you see "This region is at capacity", select a different region from the dropdown (e.g., West US 3, North Central US, or Sweden Central).
+
+6. Once the Foundry IQ resource is created, you'll be prompted to configure the knowledge base:
 
 | Setting | Value |
 |---------|-------|
 | **Name** | `pharma-commercial-kb` |
-| **Knowledge Source** | Azure Blob Storage |
+| **Data source** | Azure Blob Storage |
+| **Storage account** | Select your lab storage account |
 | **Container** | `pharma-commercial-data` |
 | **Model for Synthesis** | `gpt-4.1` |
 
-4. Set **Output Mode** to **Answer Synthesis** — this enables the LLM to synthesize responses from retrieved data
-5. Add **Retrieval Instructions**:
+7. Set **Output Mode** to **Answer Synthesis** — this enables the LLM to synthesize responses from retrieved data
+8. Add **Retrieval Instructions**:
 ```
 Use this knowledge base for questions about drug pipeline, revenue performance, 
 market share, and regulatory milestones. Always cite specific data points 
 including quarter, therapeutic area, and drug names.
 ```
-6. Add **Answer Instructions**:
+9. Add **Answer Instructions**:
 ```
 Provide concise, data-driven answers. Include specific numbers from the data.
 Format financial figures in millions. Always state the quarter or time period 
 for any metrics cited.
 ```
-7. Click **Create**
+10. Click **Create**
 
 ---
 
 ## 3.5 — Connect the Knowledge Base to Your Agent
 
-1. Go to **Build** → **Agents** → Select `ZavaCommOpsAnalyst`
-2. In the agent configuration, add the **Foundry IQ** knowledge base:
-   - Under **Tools**, click **+ Add Tool**
-   - Select **Azure AI Search** or **Foundry IQ Knowledge**
-   - Select `pharma-commercial-kb`
-3. **Save** a new version of the agent
+1. Go to **Agents** in the left navigation → Select your `ZavaCommOpsAnalyst` agent
+2. In the agent configuration panel, scroll to the **Knowledge** section
+3. Click **+ Add knowledge base**
+4. Select `pharma-commercial-kb` from the list
+5. Click **Save** to update the agent
+
+> **💡 Tip:** The Knowledge section may also appear under the "Tools" panel depending on your portal version. Look for either "Knowledge" or "Foundry IQ" as the tool type.
 
 ---
 
@@ -139,8 +149,8 @@ Notice how the responses:
 
 ## 3.8 — Checkpoint
 
-✅ You uploaded pharma commercial data to Azure Storage  
-✅ You created a Foundry IQ knowledge base with agentic retrieval  
+✅ You verified pharma commercial data is in Azure Storage  
+✅ You created a Foundry IQ resource and knowledge base with agentic retrieval  
 ✅ You grounded your agent in proprietary enterprise data  
 ✅ You verified citation-backed, accurate responses  
 

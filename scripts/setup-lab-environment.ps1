@@ -750,6 +750,15 @@ foreach ($user in $users) {
         --scope $searchId `
         --output none 2>&1 | Out-Null
 
+    # Contributor on resource group - Required for Foundry IQ Knowledge Base creation
+    # (The Knowledge tab needs ARM write access to create Foundry IQ resources in the RG)
+    Write-Log "  Assigning Contributor on resource group (for Foundry IQ)..."
+    az role assignment create `
+        --assignee $userObjectId `
+        --role "Contributor" `
+        --scope "/subscriptions/$SubscriptionId/resourceGroups/$sharedRg" `
+        --output none 2>&1 | Out-Null
+
     # Reader on own project only - prevents seeing other users' projects
     # (Do NOT assign Reader on the full resource group - that exposes all projects)
     if ($projectId) {
@@ -846,6 +855,7 @@ Write-Log "  [OK] Cognitive Services User - Call model endpoints (project-scoped
 Write-Log "  [OK] Storage Blob Data Contributor - Upload/download data"
 Write-Log "  [OK] Search Index Data Contributor - Query knowledge bases"
 Write-Log "  [OK] Search Service Contributor - Create knowledge bases"
+Write-Log "  [OK] Contributor (Resource Group) - Create Foundry IQ knowledge resources"
 Write-Log "  [OK] Reader (Own Project) - View own project only"
 Write-Log "  [OK] Log Analytics Reader - View traces and monitoring"
 Write-Log ""
