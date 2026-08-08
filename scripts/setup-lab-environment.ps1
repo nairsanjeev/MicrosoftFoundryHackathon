@@ -117,7 +117,7 @@ if ($LASTEXITCODE -ne 0) {
 # ============================================================================
 # Register Required Providers
 # ============================================================================
-Write-Log "Registering required resource providers..."
+Write-Log "Checking required resource providers..."
 $providers = @(
     "Microsoft.CognitiveServices",
     "Microsoft.Search",
@@ -128,8 +128,13 @@ $providers = @(
 )
 
 foreach ($provider in $providers) {
-    Write-Log "  Registering $provider..."
-    az provider register --namespace $provider --wait 2>&1 | Out-Null
+    $regState = az provider show --namespace $provider --query registrationState -o tsv 2>$null
+    if ($regState -eq "Registered") {
+        Write-Log "  $provider - already registered (skipping)"
+    } else {
+        Write-Log "  Registering $provider..."
+        az provider register --namespace $provider --wait 2>&1 | Out-Null
+    }
 }
 
 # ============================================================================
@@ -304,19 +309,27 @@ $storageId = az storage account show `
 # Assign current user Storage Blob Data Contributor so we can create containers/upload
 $currentUserId = az ad signed-in-user show --query id -o tsv 2>$null
 if ($currentUserId) {
-    Write-Log "Assigning Storage Blob Data Contributor to current user on storage..."
-    az role assignment create `
+    $existingRole = az role assignment list `
         --assignee $currentUserId `
         --role "Storage Blob Data Contributor" `
         --scope $storageId `
-        --output none 2>$null
-    # Wait briefly for RBAC propagation
-    Write-Log "  Waiting 15s for RBAC propagation..."
-    Start-Sleep -Seconds 15
+        --query "[0].id" -o tsv 2>$null
+    if ($existingRole) {
+        Write-Log "Storage Blob Data Contributor already assigned to current user (skipping)"
+    } else {
+        Write-Log "Assigning Storage Blob Data Contributor to current user on storage..."
+        az role assignment create `
+            --assignee $currentUserId `
+            --role "Storage Blob Data Contributor" `
+            --scope $storageId `
+            --output none 2>$null
+        # Wait briefly for RBAC propagation
+        Write-Log "  Waiting 15s for RBAC propagation..."
+        Start-Sleep -Seconds 15
+    }
 }
 
-# Create the pharma data container
-Write-Log "Creating blob container: pharma-commercial-data"
+# Create the pharma data container (if it doesn't already exist)
 $savedErrorPref = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 
@@ -331,53 +344,101 @@ $sasToken = az storage account generate-sas `
     --https-only `
     -o tsv 2>$null
 
+# Check if container already exists
+$containerExists = $false
 if ($sasToken) {
-    Write-Log "  Generated SAS token (expires in 2 hours)"
-    az storage container create `
+    $containerCheck = az storage container exists `
         --name pharma-commercial-data `
         --account-name $storageNameClean `
         --sas-token $sasToken `
-        --output none 2>$null
+        --query exists -o tsv 2>$null
+    if ($containerCheck -eq "true") { $containerExists = $true }
 } else {
-    Write-Log "  SAS generation failed, trying auth-mode login..." "WARN"
-    az storage container create `
+    $containerCheck = az storage container exists `
         --name pharma-commercial-data `
         --account-name $storageNameClean `
         --auth-mode login `
-        --output none 2>$null
+        --query exists -o tsv 2>$null
+    if ($containerCheck -eq "true") { $containerExists = $true }
+}
+
+if ($containerExists) {
+    Write-Log "Blob container already exists: pharma-commercial-data (skipping)"
+} else {
+    Write-Log "Creating blob container: pharma-commercial-data"
+    if ($sasToken) {
+        Write-Log "  Generated SAS token (expires in 2 hours)"
+        az storage container create `
+            --name pharma-commercial-data `
+            --account-name $storageNameClean `
+            --sas-token $sasToken `
+            --output none 2>$null
+    } else {
+        Write-Log "  SAS generation failed, trying auth-mode login..." "WARN"
+        az storage container create `
+            --name pharma-commercial-data `
+            --account-name $storageNameClean `
+            --auth-mode login `
+            --output none 2>$null
+    }
+    Write-Log "Blob container ready: pharma-commercial-data"
 }
 
 $ErrorActionPreference = $savedErrorPref
-Write-Log "Blob container ready: pharma-commercial-data"
 
-# Upload sample data files if they exist locally
+# Upload sample data files if they exist locally (skip files already uploaded)
 $dataDir = Join-Path $PSScriptRoot "..\data"
 if (Test-Path $dataDir) {
-    Write-Log "Uploading sample CSV data files..."
+    # List existing blobs to avoid re-uploading
+    $existingBlobs = @()
+    if ($sasToken) {
+        $existingBlobs = @(az storage blob list `
+            --account-name $storageNameClean `
+            --container-name pharma-commercial-data `
+            --sas-token $sasToken `
+            --query "[].name" -o tsv 2>$null)
+    } else {
+        $existingBlobs = @(az storage blob list `
+            --account-name $storageNameClean `
+            --container-name pharma-commercial-data `
+            --auth-mode login `
+            --query "[].name" -o tsv 2>$null)
+    }
+
     $csvFiles = Get-ChildItem -Path $dataDir -Filter "*.csv"
+    $uploadCount = 0
     foreach ($csv in $csvFiles) {
-        Write-Log "  Uploading $($csv.Name)..."
-        if ($sasToken) {
-            az storage blob upload `
-                --account-name $storageNameClean `
-                --container-name pharma-commercial-data `
-                --file $csv.FullName `
-                --name $csv.Name `
-                --sas-token $sasToken `
-                --overwrite `
-                --output none 2>$null
+        if ($existingBlobs -contains $csv.Name) {
+            Write-Log "  $($csv.Name) - already uploaded (skipping)"
         } else {
-            az storage blob upload `
-                --account-name $storageNameClean `
-                --container-name pharma-commercial-data `
-                --file $csv.FullName `
-                --name $csv.Name `
-                --auth-mode login `
-                --overwrite `
-                --output none 2>$null
+            Write-Log "  Uploading $($csv.Name)..."
+            if ($sasToken) {
+                az storage blob upload `
+                    --account-name $storageNameClean `
+                    --container-name pharma-commercial-data `
+                    --file $csv.FullName `
+                    --name $csv.Name `
+                    --sas-token $sasToken `
+                    --overwrite `
+                    --output none 2>$null
+            } else {
+                az storage blob upload `
+                    --account-name $storageNameClean `
+                    --container-name pharma-commercial-data `
+                    --file $csv.FullName `
+                    --name $csv.Name `
+                    --auth-mode login `
+                    --overwrite `
+                    --output none 2>$null
+            }
+            $uploadCount++
         }
     }
-    Write-Log "Sample data uploaded successfully"
+    if ($uploadCount -gt 0) {
+        Write-Log "Uploaded $uploadCount new file(s)"
+    } else {
+        Write-Log "All sample data files already present (skipping upload)"
+    }
 }
 else {
     Write-Log "Data directory not found at $dataDir - skipping sample data upload" "WARN"
