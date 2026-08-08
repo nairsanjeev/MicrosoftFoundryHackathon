@@ -141,6 +141,7 @@ Users get enough access to complete all labs but **cannot** create/delete model 
 | Role | Scope | Purpose |
 |------|-------|---------|
 | **Foundry User** (Azure AI User) | Foundry resource | Create agents, use tools, manage knowledge |
+| **Cognitive Services Contributor** | Foundry resource | Create/access Foundry projects and manage deployments |
 | **Cognitive Services User** | Foundry resource | Call model endpoints |
 | **Storage Blob Data Contributor** | Storage account | Upload/download pharma data |
 | **Search Index Data Contributor** | Search service | Query knowledge bases |
@@ -152,7 +153,6 @@ Users get enough access to complete all labs but **cannot** create/delete model 
 
 | Role | Why Restricted |
 |------|---------------|
-| Cognitive Services Contributor | Cannot create/delete model deployments |
 | Owner / Contributor | Cannot modify infrastructure |
 | Azure AI Account Owner | Cannot manage Foundry resource settings |
 

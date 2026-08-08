@@ -594,6 +594,14 @@ foreach ($user in $users) {
         --scope $foundryId `
         --output none 2>&1 | Out-Null
 
+    # Cognitive Services Contributor - Allows creating Foundry projects and managing deployments
+    Write-Log "  Assigning Cognitive Services Contributor (Foundry resource scope)..."
+    az role assignment create `
+        --assignee $userObjectId `
+        --role "Cognitive Services Contributor" `
+        --scope $foundryId `
+        --output none 2>&1 | Out-Null
+
     # Storage Blob Data Contributor - Can upload/download data for Foundry IQ
     Write-Log "  Assigning Storage Blob Data Contributor..."
     az role assignment create `
