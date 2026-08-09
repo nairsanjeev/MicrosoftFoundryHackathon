@@ -81,7 +81,7 @@ You need to upload the pharma data files to Azure Blob Storage so Foundry IQ can
 
 ---
 
-## 3.4 — Connect to the Foundry IQ Resource
+## 3.4 — Create a Knowledge Base with Foundry IQ
 
 Your lab environment has a **pre-created Foundry IQ resource** (Azure AI Search) with Managed Identity already configured for secure, keyless authentication.
 
@@ -103,32 +103,74 @@ Your lab environment has a **pre-created Foundry IQ resource** (Azure AI Search)
 
 6. Click **Connect**
 
-### Step 2: Create the Knowledge Base
-
-Once connected, configure the knowledge base:
+### Step 2: Configure Basic Settings
 
 | Setting | Value |
 |---------|-------|
 | **Name** | `pharma-commercial-kb` |
-| **Data source** | Azure Blob Storage |
-| **Storage account** | Select the lab storage account (starts with `st...`) |
-| **Container** | `pharma-commercial-data` |
-| **Model for Synthesis** | `gpt-4.1` |
+| **Chat completions model** | `gpt-5` (or `gpt-4.1` if available) |
+| **Output mode** | Answer synthesis |
+| **Retrieval reasoning effort** | Minimal |
 
-7. Set **Output Mode** to **Answer Synthesis** — this enables the LLM to synthesize responses from retrieved data
-8. Add **Retrieval Instructions**:
+Add **Retrieval Instructions**:
 ```
 Use this knowledge base for questions about drug pipeline, revenue performance, 
 market share, and regulatory milestones. Always cite specific data points 
 including quarter, therapeutic area, and drug names.
 ```
-9. Add **Answer Instructions**:
+
+Add **Answer Instructions**:
 ```
 Provide concise, data-driven answers. Include specific numbers from the data.
 Format financial figures in millions. Always state the quarter or time period 
 for any metrics cited.
 ```
-10. Click **Create**
+
+### Step 3: Understanding Knowledge Source Types
+
+After basic configuration, you need to add a **Knowledge Source** — this is where your actual data lives. Click **Add sources** to see the available options:
+
+![Knowledge Source Options](../presentations/knowledge-source-options.png)
+
+| Source Type | How It Works | Index Creation | Best For |
+|-------------|-------------|----------------|----------|
+| **Azure Blob Storage** | Points to a blob container. Foundry IQ **automatically creates** a search index with an indexer pipeline (data source → skillset → indexer → index). | ✅ Auto-created | Raw files in storage (CSV, PDF, DOCX). **Best for this lab.** |
+| **Upload files** *(Preview)* | Upload files directly to Azure AI Search. No external storage needed. | ✅ Auto-created | Quick testing with a few files. Limited to smaller datasets. |
+| **Azure AI Search Index** | Wraps an **existing** search index that you already created with the proper schema. | ❌ Must pre-exist | Advanced scenarios where you control the index schema, chunking, and vectorization. |
+| **Web** | Real-time grounding from Bing. No indexing — queries the web at runtime. | N/A (remote) | Current events, public knowledge not in your data. |
+| **Work IQ** *(Preview)* | Organizational intelligence from Microsoft 365 (emails, docs, Teams). | N/A (remote) | Internal company knowledge from M365. |
+| **Fabric IQ (OneLake Catalog)** *(Preview)* | Grounds responses from Fabric lakehouses and ontologies. | N/A (remote) | Enterprise data already in Microsoft Fabric. |
+
+> **💡 Key Insight:** The difference between "Azure Blob Storage" and "Azure AI Search Index" is crucial:
+> - **Blob Storage** = "here's my raw data, please index it for me" (end-to-end automated)
+> - **AI Search Index** = "I already built the index, just query it" (you manage the pipeline)
+>
+> For this lab, we use **Azure Blob Storage** because our CSV files are already in blob storage and we want Foundry IQ to handle all the indexing automatically.
+
+### Step 4: Add Azure Blob Storage as Knowledge Source
+
+1. Click **Add sources** → select **Azure Blob Storage**
+2. Configure the knowledge source:
+
+| Setting | Value |
+|---------|-------|
+| **Name** | `ks-pharma-blob` (or keep the auto-generated name) |
+| **Description** | `Pharmaceutical commercial data: drug pipeline, revenue, regulatory milestones` |
+| **Storage account** | Select the lab storage account (starts with `st...`) |
+| **Container name** | `pharma-commercial-data` |
+| **Authentication type** | Managed Identity |
+| **Content extraction mode** | Minimal |
+| **Embedding model** | *(leave empty — not required for CSV data)* |
+| **Chat completions model** | *(leave empty or select gpt-5)* |
+
+3. Click **Create**
+
+> **⏱️ Note:** After creation, Foundry IQ will automatically build an indexer pipeline and begin indexing your CSV files. This may take 1-2 minutes. The status will show "Active" when complete.
+
+### Step 5: Save the Knowledge Base
+
+1. Verify your knowledge source shows **Active** status in the list
+2. Click **Save knowledge base** (top-right corner)
 
 ---
 
