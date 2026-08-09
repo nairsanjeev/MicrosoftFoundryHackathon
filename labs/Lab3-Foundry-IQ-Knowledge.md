@@ -42,62 +42,80 @@ cd MicrosoftFoundryHackathon/data
 
 ---
 
-## 3.3 — Verify Pre-Uploaded Data
+## 3.3 — Upload Data to Azure Storage
 
-Your lab administrator has already uploaded the pharma data files to Azure Blob Storage. You can verify them:
+You need to upload the pharma data files to Azure Blob Storage so Foundry IQ can index them.
 
-1. In the **Azure Portal** (portal.azure.com), navigate to the Storage Account (name shown in your lab assignment sheet)
-2. Go to **Containers** → `pharma-commercial-data`
-3. Confirm the three CSV files are present: `drug_pipeline.csv`, `quarterly_revenue.csv`, `regulatory_milestones.csv`
+### Step 1: Open the Storage Account
 
-> **Note:** If you don't see the container or files, ask your lab admin to re-run the setup script.
+1. In the **Azure Portal** (portal.azure.com), navigate to your resource group `rg-foundry-lab-shared`
+2. Click on the **Storage Account** (name starts with `st...`)
+
+### Step 2: Create the Container
+
+1. In the left menu, click **Containers** (under Data storage)
+2. Click **+ Container**
+3. Set the name to: `pharma-commercial-data`
+4. Leave access level as **Private**
+5. Click **Create**
+
+### Step 3: Upload the CSV Files
+
+1. Click on the newly created `pharma-commercial-data` container
+2. Click **Upload**
+3. Browse and select all three CSV files you downloaded in Step 3.2:
+   - `drug_pipeline.csv`
+   - `quarterly_revenue.csv`
+   - `regulatory_milestones.csv`
+4. Click **Upload**
+5. Verify all three files appear in the container
+
+> **💡 Tip:** You can also upload via Azure CLI if you prefer:
+> ```bash
+> az storage blob upload-batch \
+>   --account-name <your-storage-account> \
+>   --destination pharma-commercial-data \
+>   --source ./data/ \
+>   --auth-mode login
+> ```
 
 ---
 
 ## 3.4 — Create a Foundry IQ Knowledge Base
 
-Use the **Knowledge** tab in the Foundry portal to create a knowledge base backed by your pharma data.
+Your lab environment has a **pre-created Foundry IQ resource** (Azure AI Search). You will use it to create a knowledge base backed by your pharma data.
 
 1. In the **Foundry portal** (ai.azure.com), open your project (e.g., `proj-pharma-john-doe`)
 2. In the left navigation, click **Knowledge**
-3. Click the **Knowledge bases** tab, then **+ New knowledge base**
-4. In the "Create Foundry IQ resource" dialog, configure:
+3. Click **+ New knowledge base**
+4. When prompted to select a Foundry IQ resource, choose the **existing resource** that was pre-created for the lab (it will appear in the dropdown — look for a name starting with `srch...`)
 
-| Setting | Value |
-|---------|-------|
-| **Resource name** | Leave the auto-generated name (e.g., your project name) |
-| **Subscription** | Your lab subscription |
-| **Resource group** | `rg-foundry-lab-shared` |
-| **Region** | Select a region with available capacity (try **East US 2**, or **West US 3** if at capacity) |
+   > **⚠️ Important:** Do NOT click "Create new resource" — use the existing one to avoid capacity issues.
 
-5. Click **Create** and wait for the resource to provision
-
-> **⚠️ Region at capacity?** If you see "This region is at capacity", select a different region from the dropdown (e.g., West US 3, North Central US, or Sweden Central).
-
-6. Once the Foundry IQ resource is created, you'll be prompted to configure the knowledge base:
+5. Configure the knowledge base:
 
 | Setting | Value |
 |---------|-------|
 | **Name** | `pharma-commercial-kb` |
 | **Data source** | Azure Blob Storage |
-| **Storage account** | Select your lab storage account |
+| **Storage account** | Select the lab storage account (starts with `st...`) |
 | **Container** | `pharma-commercial-data` |
 | **Model for Synthesis** | `gpt-4.1` |
 
-7. Set **Output Mode** to **Answer Synthesis** — this enables the LLM to synthesize responses from retrieved data
-8. Add **Retrieval Instructions**:
+6. Set **Output Mode** to **Answer Synthesis** — this enables the LLM to synthesize responses from retrieved data
+7. Add **Retrieval Instructions**:
 ```
 Use this knowledge base for questions about drug pipeline, revenue performance, 
 market share, and regulatory milestones. Always cite specific data points 
 including quarter, therapeutic area, and drug names.
 ```
-9. Add **Answer Instructions**:
+8. Add **Answer Instructions**:
 ```
 Provide concise, data-driven answers. Include specific numbers from the data.
 Format financial figures in millions. Always state the quarter or time period 
 for any metrics cited.
 ```
-10. Click **Create**
+9. Click **Create**
 
 ---
 
@@ -149,8 +167,8 @@ Notice how the responses:
 
 ## 3.8 — Checkpoint
 
-✅ You verified pharma commercial data is in Azure Storage  
-✅ You created a Foundry IQ resource and knowledge base with agentic retrieval  
+✅ You uploaded pharma commercial data to Azure Blob Storage  
+✅ You created a Foundry IQ knowledge base using the pre-created search resource  
 ✅ You grounded your agent in proprietary enterprise data  
 ✅ You verified citation-backed, accurate responses  
 
