@@ -51,7 +51,7 @@ param(
 # ============================================================================
 # Configuration
 # ============================================================================
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $logFile = "./setup-log-$timestamp.txt"
 
@@ -147,10 +147,7 @@ az group create --name $sharedRg --location $Location --output none
 # ============================================================================
 # Create Log Analytics Workspace (shared)
 # ============================================================================
-$savedErrorPrefLA = $ErrorActionPreference
-$ErrorActionPreference = "Continue"
 $existingLA = az monitor log-analytics workspace show --resource-group $sharedRg --workspace-name $LogAnalyticsName --query id -o tsv 2>$null
-$ErrorActionPreference = $savedErrorPrefLA
 if ($existingLA) {
     Write-Log "Log Analytics workspace already exists: $LogAnalyticsName - reusing"
     $logAnalyticsId = $existingLA
@@ -171,11 +168,9 @@ if ($existingLA) {
 # Create Application Insights (shared)
 # ============================================================================
 # Ensure the application-insights CLI extension is installed
-$savedErrorPrefAI = $ErrorActionPreference
-$ErrorActionPreference = "Continue"
 az extension add --name application-insights --yes 2>$null | Out-Null
+
 $existingAI = az monitor app-insights component show --app $AppInsightsName --resource-group $sharedRg --query id -o tsv 2>$null
-$ErrorActionPreference = $savedErrorPrefAI
 if ($existingAI) {
     Write-Log "Application Insights already exists: $AppInsightsName - reusing"
     $appInsightsId = $existingAI
@@ -216,8 +211,6 @@ if ($existingSearch) {
     # is out of capacity, we try alternate regions automatically.
     $searchRegions = @($Location, "westus3", "northcentralus", "eastus", "westus2", "swedencentral", "westeurope")
     $searchCreated = $false
-    $savedErrorPref = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
 
     foreach ($searchRegion in $searchRegions) {
         if ($searchCreated) { break }
@@ -244,8 +237,6 @@ if ($existingSearch) {
             }
         }
     }
-
-    $ErrorActionPreference = $savedErrorPref
 
     if (-not $searchCreated) {
         Write-Log "Failed to create Azure AI Search in any region. Check subscription quotas." "ERROR"
@@ -277,8 +268,6 @@ if ($existingStorage) {
     $storageCreated = $false
     $storageAttempt = 0
     $storageCandidate = $storageNameClean
-    $savedErrorPref = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
 
     while (-not $storageCreated -and $storageAttempt -lt 5) {
         $storageAttempt++
@@ -298,8 +287,6 @@ if ($existingStorage) {
             Write-Log "  Name unavailable, retrying with '$storageCandidate' (attempt $storageAttempt/5)..." "WARN"
         }
     }
-
-    $ErrorActionPreference = $savedErrorPref
 
     if (-not $storageCreated) {
         Write-Log "Failed to create Storage Account after 5 attempts. Try a different -StorageAccountName." "ERROR"
@@ -338,8 +325,6 @@ if ($currentUserId) {
 }
 
 # Create the pharma data container (if it doesn't already exist)
-$savedErrorPref = $ErrorActionPreference
-$ErrorActionPreference = "Continue"
 
 # Generate an account-level SAS token for container/blob operations
 $sasExpiry = (Get-Date).AddHours(2).ToUniversalTime().ToString("yyyy-MM-ddTHH:mmZ")
@@ -392,14 +377,10 @@ if ($containerExists) {
     Write-Log "Blob container ready: pharma-commercial-data"
 }
 
-$ErrorActionPreference = $savedErrorPref
-
 # Upload sample data files if they exist locally (skip files already uploaded)
 $dataDir = Join-Path $PSScriptRoot "..\data"
 if (Test-Path $dataDir) {
     # List existing blobs to avoid re-uploading
-    $savedErrorPrefBlob = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
     $existingBlobs = @()
     if ($sasToken) {
         $existingBlobs = @(az storage blob list `
@@ -449,7 +430,6 @@ if (Test-Path $dataDir) {
     } else {
         Write-Log "All sample data files already present (skipping upload)"
     }
-    $ErrorActionPreference = $savedErrorPrefBlob
 }
 else {
     Write-Log "Data directory not found at $dataDir - skipping sample data upload" "WARN"
@@ -473,8 +453,6 @@ if ($existingFoundry) {
     $foundryCreated = $false
     $foundryAttempt = 0
     $foundryCandidate = $FoundryResourceName
-    $savedErrorPref = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
 
     while (-not $foundryCreated -and $foundryAttempt -lt 5) {
         $foundryAttempt++
@@ -495,8 +473,6 @@ if ($existingFoundry) {
             Write-Log "  Name unavailable, retrying with '$foundryCandidate' (attempt $foundryAttempt/5)..." "WARN"
         }
     }
-
-    $ErrorActionPreference = $savedErrorPref
 
     if (-not $foundryCreated) {
         Write-Log "Failed to create Foundry resource after 5 attempts. Try a different -FoundryResourceName." "ERROR"
@@ -546,8 +522,6 @@ if ($identityType -eq "SystemAssigned") {
 # ============================================================================
 # Deploy Models (shared across all projects)
 # ============================================================================
-$savedErrorPref = $ErrorActionPreference
-$ErrorActionPreference = "Continue"
 
 # Check if deployments already exist
 $existingDeployments = az cognitiveservices account deployment list `
@@ -585,7 +559,6 @@ if ($existingDeployments -match "gpt-4.1-mini") {
         --output none 2>&1 | Out-Null
 }
 
-$ErrorActionPreference = $savedErrorPref
 Write-Log "Models deployed: gpt-4.1, gpt-4.1-mini"
 
 # ============================================================================
@@ -598,8 +571,6 @@ Write-Log "============================================"
 
 $userOutputs = @()
 $userIndex = 0
-$savedErrorPref = $ErrorActionPreference
-$ErrorActionPreference = "Continue"
 
 foreach ($user in $users) {
     $upn = $user.UserPrincipalName
@@ -808,8 +779,6 @@ foreach ($user in $users) {
 
     Write-Log "  User $displayName onboarded successfully"
 }
-
-$ErrorActionPreference = $savedErrorPref
 
 # ============================================================================
 # Grant Search Service access to Foundry resource (for Foundry IQ)
