@@ -147,7 +147,10 @@ az group create --name $sharedRg --location $Location --output none
 # ============================================================================
 # Create Log Analytics Workspace (shared)
 # ============================================================================
+$savedErrorPrefLA = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 $existingLA = az monitor log-analytics workspace show --resource-group $sharedRg --workspace-name $LogAnalyticsName --query id -o tsv 2>$null
+$ErrorActionPreference = $savedErrorPrefLA
 if ($existingLA) {
     Write-Log "Log Analytics workspace already exists: $LogAnalyticsName - reusing"
     $logAnalyticsId = $existingLA
@@ -167,7 +170,10 @@ if ($existingLA) {
 # ============================================================================
 # Create Application Insights (shared)
 # ============================================================================
+$savedErrorPrefAI = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 $existingAI = az monitor app-insights component show --app $AppInsightsName --resource-group $sharedRg --query id -o tsv 2>$null
+$ErrorActionPreference = $savedErrorPrefAI
 if ($existingAI) {
     Write-Log "Application Insights already exists: $AppInsightsName - reusing"
     $appInsightsId = $existingAI
