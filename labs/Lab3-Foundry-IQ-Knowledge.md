@@ -130,7 +130,14 @@ for any metrics cited.
 
 After basic configuration, you need to add a **Knowledge Source** — this is where your actual data lives. Click **Add sources** to see the available options:
 
-![Knowledge Source Options](../presentations/knowledge-source-options.png)
+> **📋 "Add sources" dropdown options:**
+> - Work IQ *(Preview)*
+> - Fabric IQ (OneLake Catalog) *(Preview)*
+> - **Azure Blob Storage** ← *recommended for this lab*
+> - Web
+> - Azure AI Search Index
+> - Use existing sources
+> - Browse more
 
 | Source Type | How It Works | Index Creation | Best For |
 |-------------|-------------|----------------|----------|
