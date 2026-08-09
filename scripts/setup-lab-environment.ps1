@@ -673,6 +673,48 @@ foreach ($user in $users) {
         }
     }
 
+    # Grant project's managed identity access to Search (required for agent → knowledge base MCP calls)
+    if ($projectId) {
+        $projectIdentity = az rest --method GET --url $projectUrl --query "identity.principalId" -o tsv 2>$null
+        if ($projectIdentity) {
+            $existingProjectSearchRole = az role assignment list --assignee $projectIdentity --role "Search Index Data Contributor" --scope $searchId --query "[0].id" -o tsv 2>$null
+            if ($existingProjectSearchRole) {
+                Write-Log "  Project MI → Search Index Data Contributor - already assigned (skipping)"
+            } else {
+                Write-Log "  Assigning Search Index Data Contributor to project managed identity..."
+                az role assignment create `
+                    --assignee $projectIdentity `
+                    --role "Search Index Data Contributor" `
+                    --scope $searchId `
+                    --output none 2>&1 | Out-Null
+            }
+            $existingProjectSearchSvcRole = az role assignment list --assignee $projectIdentity --role "Search Service Contributor" --scope $searchId --query "[0].id" -o tsv 2>$null
+            if ($existingProjectSearchSvcRole) {
+                Write-Log "  Project MI → Search Service Contributor - already assigned (skipping)"
+            } else {
+                Write-Log "  Assigning Search Service Contributor to project managed identity..."
+                az role assignment create `
+                    --assignee $projectIdentity `
+                    --role "Search Service Contributor" `
+                    --scope $searchId `
+                    --output none 2>&1 | Out-Null
+            }
+            $existingProjectStorageRole = az role assignment list --assignee $projectIdentity --role "Storage Blob Data Reader" --scope $storageId --query "[0].id" -o tsv 2>$null
+            if ($existingProjectStorageRole) {
+                Write-Log "  Project MI → Storage Blob Data Reader - already assigned (skipping)"
+            } else {
+                Write-Log "  Assigning Storage Blob Data Reader to project managed identity..."
+                az role assignment create `
+                    --assignee $projectIdentity `
+                    --role "Storage Blob Data Reader" `
+                    --scope $storageId `
+                    --output none 2>&1 | Out-Null
+            }
+        } else {
+            Write-Log "  Could not retrieve project managed identity - agent KB access may fail" "WARN"
+        }
+    }
+
     # Determine the scope for role assignments (project if available, otherwise Foundry resource)
     $roleScope = if ($projectId) { $projectId } else { $foundryId }
     $scopeLabel = if ($projectId) { "project" } else { "resource" }
