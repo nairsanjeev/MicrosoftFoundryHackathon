@@ -681,84 +681,128 @@ foreach ($user in $users) {
     # ========================================================================
     # Assign RBAC Roles
     # Roles are assigned at the PROJECT scope so the user lands directly in
-    # their project in the portal. Role assignments are idempotent.
+    # their project in the portal. Existing assignments are skipped.
     # ========================================================================
 
+    # Fetch all existing role assignments for this user once (faster than checking one-by-one)
+    $existingAssignments = @(az role assignment list --assignee $userObjectId --all --query "[].{role:roleDefinitionName, scope:scope}" -o json 2>$null | ConvertFrom-Json)
+    Write-Log "  Found $($existingAssignments.Count) existing role assignments for user"
+
+    # Helper: check if a role+scope combo already exists
+    function Test-RoleAssigned($role, $scope) {
+        return ($existingAssignments | Where-Object { $_.role -eq $role -and $_.scope -eq $scope }) -ne $null
+    }
+
     # Cognitive Services Contributor - Allows full access to the project (create agents, use models, manage knowledge)
-    Write-Log "  Assigning Cognitive Services Contributor ($scopeLabel scope)..."
-    az role assignment create `
-        --assignee $userObjectId `
-        --role "Cognitive Services Contributor" `
-        --scope $roleScope `
-        --output none 2>&1 | Out-Null
-
-    # Azure AI User - Foundry-specific actions (agents, tools)
-    Write-Log "  Assigning Azure AI User ($scopeLabel scope)..."
-    az role assignment create `
-        --assignee $userObjectId `
-        --role "Azure AI User" `
-        --scope $roleScope `
-        --output none 2>&1 | Out-Null
-
-    # Cognitive Services User - Call model endpoints (project scope only for isolation)
-    Write-Log "  Assigning Cognitive Services User ($scopeLabel scope)..."
-    az role assignment create `
-        --assignee $userObjectId `
-        --role "Cognitive Services User" `
-        --scope $roleScope `
-        --output none 2>&1 | Out-Null
-
-    # Storage Blob Data Contributor - Upload/download data for Foundry IQ
-    Write-Log "  Assigning Storage Blob Data Contributor..."
-    az role assignment create `
-        --assignee $userObjectId `
-        --role "Storage Blob Data Contributor" `
-        --scope $storageId `
-        --output none 2>&1 | Out-Null
-
-    # Search Index Data Contributor - Query knowledge bases
-    Write-Log "  Assigning Search Index Data Contributor..."
-    az role assignment create `
-        --assignee $userObjectId `
-        --role "Search Index Data Contributor" `
-        --scope $searchId `
-        --output none 2>&1 | Out-Null
-
-    # Search Service Contributor - Create knowledge bases
-    Write-Log "  Assigning Search Service Contributor..."
-    az role assignment create `
-        --assignee $userObjectId `
-        --role "Search Service Contributor" `
-        --scope $searchId `
-        --output none 2>&1 | Out-Null
-
-    # Contributor on resource group - Required for Foundry IQ Knowledge Base creation
-    # (The Knowledge tab needs ARM write access to create Foundry IQ resources in the RG)
-    Write-Log "  Assigning Contributor on resource group (for Foundry IQ)..."
-    az role assignment create `
-        --assignee $userObjectId `
-        --role "Contributor" `
-        --scope "/subscriptions/$SubscriptionId/resourceGroups/$sharedRg" `
-        --output none 2>&1 | Out-Null
-
-    # Reader on own project only - prevents seeing other users' projects
-    # (Do NOT assign Reader on the full resource group - that exposes all projects)
-    if ($projectId) {
-        Write-Log "  Assigning Reader on own project..."
+    if (Test-RoleAssigned "Cognitive Services Contributor" $roleScope) {
+        Write-Log "  Cognitive Services Contributor ($scopeLabel) - already assigned (skipping)"
+    } else {
+        Write-Log "  Assigning Cognitive Services Contributor ($scopeLabel scope)..."
         az role assignment create `
             --assignee $userObjectId `
-            --role "Reader" `
-            --scope $projectId `
+            --role "Cognitive Services Contributor" `
+            --scope $roleScope `
             --output none 2>&1 | Out-Null
     }
 
+    # Azure AI User - Foundry-specific actions (agents, tools)
+    if (Test-RoleAssigned "Azure AI User" $roleScope) {
+        Write-Log "  Azure AI User ($scopeLabel) - already assigned (skipping)"
+    } else {
+        Write-Log "  Assigning Azure AI User ($scopeLabel scope)..."
+        az role assignment create `
+            --assignee $userObjectId `
+            --role "Azure AI User" `
+            --scope $roleScope `
+            --output none 2>&1 | Out-Null
+    }
+
+    # Cognitive Services User - Call model endpoints (project scope only for isolation)
+    if (Test-RoleAssigned "Cognitive Services User" $roleScope) {
+        Write-Log "  Cognitive Services User ($scopeLabel) - already assigned (skipping)"
+    } else {
+        Write-Log "  Assigning Cognitive Services User ($scopeLabel scope)..."
+        az role assignment create `
+            --assignee $userObjectId `
+            --role "Cognitive Services User" `
+            --scope $roleScope `
+            --output none 2>&1 | Out-Null
+    }
+
+    # Storage Blob Data Contributor - Upload/download data for Foundry IQ
+    if (Test-RoleAssigned "Storage Blob Data Contributor" $storageId) {
+        Write-Log "  Storage Blob Data Contributor - already assigned (skipping)"
+    } else {
+        Write-Log "  Assigning Storage Blob Data Contributor..."
+        az role assignment create `
+            --assignee $userObjectId `
+            --role "Storage Blob Data Contributor" `
+            --scope $storageId `
+            --output none 2>&1 | Out-Null
+    }
+
+    # Search Index Data Contributor - Query knowledge bases
+    if (Test-RoleAssigned "Search Index Data Contributor" $searchId) {
+        Write-Log "  Search Index Data Contributor - already assigned (skipping)"
+    } else {
+        Write-Log "  Assigning Search Index Data Contributor..."
+        az role assignment create `
+            --assignee $userObjectId `
+            --role "Search Index Data Contributor" `
+            --scope $searchId `
+            --output none 2>&1 | Out-Null
+    }
+
+    # Search Service Contributor - Create knowledge bases
+    if (Test-RoleAssigned "Search Service Contributor" $searchId) {
+        Write-Log "  Search Service Contributor - already assigned (skipping)"
+    } else {
+        Write-Log "  Assigning Search Service Contributor..."
+        az role assignment create `
+            --assignee $userObjectId `
+            --role "Search Service Contributor" `
+            --scope $searchId `
+            --output none 2>&1 | Out-Null
+    }
+
+    # Contributor on resource group - Required for Foundry IQ Knowledge Base creation
+    $rgScope = "/subscriptions/$SubscriptionId/resourceGroups/$sharedRg"
+    if (Test-RoleAssigned "Contributor" $rgScope) {
+        Write-Log "  Contributor (resource group) - already assigned (skipping)"
+    } else {
+        Write-Log "  Assigning Contributor on resource group (for Foundry IQ)..."
+        az role assignment create `
+            --assignee $userObjectId `
+            --role "Contributor" `
+            --scope $rgScope `
+            --output none 2>&1 | Out-Null
+    }
+
+    # Reader on own project only - prevents seeing other users' projects
+    if ($projectId) {
+        if (Test-RoleAssigned "Reader" $projectId) {
+            Write-Log "  Reader (own project) - already assigned (skipping)"
+        } else {
+            Write-Log "  Assigning Reader on own project..."
+            az role assignment create `
+                --assignee $userObjectId `
+                --role "Reader" `
+                --scope $projectId `
+                --output none 2>&1 | Out-Null
+        }
+    }
+
     # Log Analytics Reader - View traces
-    Write-Log "  Assigning Log Analytics Reader..."
-    az role assignment create `
-        --assignee $userObjectId `
-        --role "Log Analytics Reader" `
-        --scope $appInsightsId `
-        --output none 2>&1 | Out-Null
+    if (Test-RoleAssigned "Log Analytics Reader" $appInsightsId) {
+        Write-Log "  Log Analytics Reader - already assigned (skipping)"
+    } else {
+        Write-Log "  Assigning Log Analytics Reader..."
+        az role assignment create `
+            --assignee $userObjectId `
+            --role "Log Analytics Reader" `
+            --scope $appInsightsId `
+            --output none 2>&1 | Out-Null
+    }
 
     # Build the direct portal URL for this project
     $directProjectUrl = "https://ai.azure.com/project/$projectName/overview?wsid=/subscriptions/$SubscriptionId/resourceGroups/$sharedRg/providers/Microsoft.CognitiveServices/accounts/$FoundryResourceName/projects/$projectName"
@@ -793,12 +837,17 @@ $searchIdentity = az search service show `
     --query "identity.principalId" -o tsv
 
 if ($searchIdentity) {
-    Write-Log "  Assigning Cognitive Services User to Search managed identity..."
-    az role assignment create `
-        --assignee $searchIdentity `
-        --role "Cognitive Services User" `
-        --scope $foundryId `
-        --output none 2>&1 | Out-Null
+    $existing = az role assignment list --assignee $searchIdentity --role "Cognitive Services User" --scope $foundryId --query "[0].id" -o tsv 2>$null
+    if ($existing) {
+        Write-Log "  Cognitive Services User (Search MI → Foundry) - already assigned (skipping)"
+    } else {
+        Write-Log "  Assigning Cognitive Services User to Search managed identity..."
+        az role assignment create `
+            --assignee $searchIdentity `
+            --role "Cognitive Services User" `
+            --scope $foundryId `
+            --output none 2>&1 | Out-Null
+    }
 }
 
 # Grant Foundry resource's managed identity access to Search and Storage
@@ -809,28 +858,43 @@ $foundryIdentity = az cognitiveservices account show `
     --query "identity.principalId" -o tsv
 
 if ($foundryIdentity) {
-    Write-Log "  Assigning Search Index Data Contributor to Foundry managed identity..."
-    az role assignment create `
-        --assignee $foundryIdentity `
-        --role "Search Index Data Contributor" `
-        --scope $searchId `
-        --output none 2>&1 | Out-Null
+    $existing = az role assignment list --assignee $foundryIdentity --role "Search Index Data Contributor" --scope $searchId --query "[0].id" -o tsv 2>$null
+    if ($existing) {
+        Write-Log "  Search Index Data Contributor (Foundry MI → Search) - already assigned (skipping)"
+    } else {
+        Write-Log "  Assigning Search Index Data Contributor to Foundry managed identity..."
+        az role assignment create `
+            --assignee $foundryIdentity `
+            --role "Search Index Data Contributor" `
+            --scope $searchId `
+            --output none 2>&1 | Out-Null
+    }
 
-    Write-Log "  Assigning Search Service Contributor to Foundry managed identity..."
-    az role assignment create `
-        --assignee $foundryIdentity `
-        --role "Search Service Contributor" `
-        --scope $searchId `
-        --output none 2>&1 | Out-Null
+    $existing = az role assignment list --assignee $foundryIdentity --role "Search Service Contributor" --scope $searchId --query "[0].id" -o tsv 2>$null
+    if ($existing) {
+        Write-Log "  Search Service Contributor (Foundry MI → Search) - already assigned (skipping)"
+    } else {
+        Write-Log "  Assigning Search Service Contributor to Foundry managed identity..."
+        az role assignment create `
+            --assignee $foundryIdentity `
+            --role "Search Service Contributor" `
+            --scope $searchId `
+            --output none 2>&1 | Out-Null
+    }
 
-    Write-Log "  Assigning Storage Blob Data Reader to Foundry managed identity..."
-    az role assignment create `
-        --assignee $foundryIdentity `
-        --role "Storage Blob Data Reader" `
-        --scope $storageId `
-        --output none 2>&1 | Out-Null
+    $existing = az role assignment list --assignee $foundryIdentity --role "Storage Blob Data Reader" --scope $storageId --query "[0].id" -o tsv 2>$null
+    if ($existing) {
+        Write-Log "  Storage Blob Data Reader (Foundry MI → Storage) - already assigned (skipping)"
+    } else {
+        Write-Log "  Assigning Storage Blob Data Reader to Foundry managed identity..."
+        az role assignment create `
+            --assignee $foundryIdentity `
+            --role "Storage Blob Data Reader" `
+            --scope $storageId `
+            --output none 2>&1 | Out-Null
+    }
 
-    Write-Log "  Foundry MI configured for Managed Identity auth with Search and Storage"
+    Write-Log "  Foundry MI permissions verified for Managed Identity auth"
 } else {
     Write-Log "  Could not retrieve Foundry managed identity - Managed Identity auth may not work" "WARN"
 }
