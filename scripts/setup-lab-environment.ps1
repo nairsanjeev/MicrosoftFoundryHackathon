@@ -170,6 +170,9 @@ if ($existingLA) {
 # ============================================================================
 # Create Application Insights (shared)
 # ============================================================================
+# Ensure the application-insights CLI extension is installed
+az extension add --name application-insights --yes 2>$null
+
 $savedErrorPrefAI = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 $existingAI = az monitor app-insights component show --app $AppInsightsName --resource-group $sharedRg --query id -o tsv 2>$null
@@ -396,6 +399,8 @@ $ErrorActionPreference = $savedErrorPref
 $dataDir = Join-Path $PSScriptRoot "..\data"
 if (Test-Path $dataDir) {
     # List existing blobs to avoid re-uploading
+    $savedErrorPrefBlob = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     $existingBlobs = @()
     if ($sasToken) {
         $existingBlobs = @(az storage blob list `
@@ -445,6 +450,7 @@ if (Test-Path $dataDir) {
     } else {
         Write-Log "All sample data files already present (skipping upload)"
     }
+    $ErrorActionPreference = $savedErrorPrefBlob
 }
 else {
     Write-Log "Data directory not found at $dataDir - skipping sample data upload" "WARN"
