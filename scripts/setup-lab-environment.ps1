@@ -879,6 +879,7 @@ $searchIdentity = az search service show `
     --query "identity.principalId" -o tsv
 
 if ($searchIdentity) {
+    # Search MI → Cognitive Services User on Foundry (for vectorization/embedding calls)
     $existing = az role assignment list --assignee $searchIdentity --role "Cognitive Services User" --scope $foundryId --query "[0].id" -o tsv 2>$null
     if ($existing) {
         Write-Log "  Cognitive Services User (Search MI → Foundry) - already assigned (skipping)"
@@ -890,6 +891,21 @@ if ($searchIdentity) {
             --scope $foundryId `
             --output none 2>&1 | Out-Null
     }
+
+    # Search MI → Storage Blob Data Reader on Storage (CRITICAL: indexer reads blobs via this)
+    $existing = az role assignment list --assignee $searchIdentity --role "Storage Blob Data Reader" --scope $storageId --query "[0].id" -o tsv 2>$null
+    if ($existing) {
+        Write-Log "  Storage Blob Data Reader (Search MI → Storage) - already assigned (skipping)"
+    } else {
+        Write-Log "  Assigning Storage Blob Data Reader to Search managed identity (for indexer)..."
+        az role assignment create `
+            --assignee $searchIdentity `
+            --role "Storage Blob Data Reader" `
+            --scope $storageId `
+            --output none 2>&1 | Out-Null
+    }
+} else {
+    Write-Log "  Could not retrieve Search managed identity - indexer blob access may fail" "WARN"
 }
 
 # Grant Foundry resource's managed identity access to Search and Storage
@@ -939,6 +955,94 @@ if ($foundryIdentity) {
     Write-Log "  Foundry MI permissions verified for Managed Identity auth"
 } else {
     Write-Log "  Could not retrieve Foundry managed identity - Managed Identity auth may not work" "WARN"
+}
+
+# ============================================================================
+# Verify Search Service Health (smoke test)
+# ============================================================================
+Write-Log ""
+Write-Log "============================================"
+Write-Log "Verifying Search & Knowledge Base readiness..."
+Write-Log "============================================"
+
+# Check if the search service is reachable and list any existing indexes
+$searchAdminKey = az search admin-key show `
+    --service-name $SearchServiceName `
+    --resource-group $sharedRg `
+    --query primaryKey -o tsv 2>$null
+
+if ($searchAdminKey) {
+    # List indexes
+    $indexListJson = az rest --method GET `
+        --url "https://$SearchServiceName.search.windows.net/indexes?api-version=2024-07-01" `
+        --headers "api-key=$searchAdminKey" `
+        --output json 2>$null
+    if ($LASTEXITCODE -eq 0 -and $indexListJson) {
+        $indexes = ($indexListJson | ConvertFrom-Json).value
+        Write-Log "  Search indexes found: $($indexes.Count)"
+        foreach ($idx in $indexes) {
+            Write-Log "    - $($idx.name)"
+        }
+    } else {
+        Write-Log "  No indexes found yet (indexes will be created when users add knowledge sources)" "WARN"
+    }
+
+    # List indexers (if any exist from a previous knowledge source creation)
+    $indexerListJson = az rest --method GET `
+        --url "https://$SearchServiceName.search.windows.net/indexers?api-version=2024-07-01" `
+        --headers "api-key=$searchAdminKey" `
+        --output json 2>$null
+    if ($LASTEXITCODE -eq 0 -and $indexerListJson) {
+        $indexers = ($indexerListJson | ConvertFrom-Json).value
+        if ($indexers.Count -gt 0) {
+            Write-Log "  Indexers found: $($indexers.Count)"
+            foreach ($indexer in $indexers) {
+                # Get indexer status
+                $statusJson = az rest --method GET `
+                    --url "https://$SearchServiceName.search.windows.net/indexers/$($indexer.name)/status?api-version=2024-07-01" `
+                    --headers "api-key=$searchAdminKey" `
+                    --output json 2>$null
+                if ($LASTEXITCODE -eq 0 -and $statusJson) {
+                    $status = $statusJson | ConvertFrom-Json
+                    $lastResult = $status.lastResult
+                    if ($lastResult) {
+                        $docCount = if ($lastResult.itemsProcessed) { $lastResult.itemsProcessed } else { 0 }
+                        $errorCount = if ($lastResult.errors) { $lastResult.errors.Count } else { 0 }
+                        $runStatus = $lastResult.status
+                        Write-Log "    - $($indexer.name): status=$runStatus, docs=$docCount, errors=$errorCount"
+                        if ($errorCount -gt 0) {
+                            Write-Log "      INDEXER ERRORS DETECTED - check Azure Portal → Search → Indexers" "WARN"
+                        }
+                    } else {
+                        Write-Log "    - $($indexer.name): not yet run"
+                    }
+                }
+            }
+        } else {
+            Write-Log "  No indexers found (will be created when knowledge source is added)"
+        }
+    }
+
+    # Verify RBAC chain summary
+    Write-Log ""
+    Write-Log "  RBAC chain verification:"
+    Write-Log "    Search MI ($searchIdentity):"
+    $r1 = az role assignment list --assignee $searchIdentity --role "Storage Blob Data Reader" --scope $storageId --query "[0].id" -o tsv 2>$null
+    Write-Log "      → Storage Blob Data Reader on Storage: $(if ($r1) { 'OK' } else { 'MISSING!' })"
+    $r2 = az role assignment list --assignee $searchIdentity --role "Cognitive Services User" --scope $foundryId --query "[0].id" -o tsv 2>$null
+    Write-Log "      → Cognitive Services User on Foundry:  $(if ($r2) { 'OK' } else { 'MISSING!' })"
+
+    if ($foundryIdentity) {
+        Write-Log "    Foundry MI ($foundryIdentity):"
+        $r3 = az role assignment list --assignee $foundryIdentity --role "Search Index Data Contributor" --scope $searchId --query "[0].id" -o tsv 2>$null
+        Write-Log "      → Search Index Data Contributor:       $(if ($r3) { 'OK' } else { 'MISSING!' })"
+        $r4 = az role assignment list --assignee $foundryIdentity --role "Search Service Contributor" --scope $searchId --query "[0].id" -o tsv 2>$null
+        Write-Log "      → Search Service Contributor:          $(if ($r4) { 'OK' } else { 'MISSING!' })"
+        $r5 = az role assignment list --assignee $foundryIdentity --role "Storage Blob Data Reader" --scope $storageId --query "[0].id" -o tsv 2>$null
+        Write-Log "      → Storage Blob Data Reader on Storage: $(if ($r5) { 'OK' } else { 'MISSING!' })"
+    }
+} else {
+    Write-Log "  Could not retrieve Search admin key - skipping verification" "WARN"
 }
 
 # ============================================================================

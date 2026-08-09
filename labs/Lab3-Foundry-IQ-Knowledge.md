@@ -186,7 +186,69 @@ After basic configuration, you need to add a **Knowledge Source** — this is wh
 
 ---
 
-## 3.6 — Test Knowledge-Grounded Responses
+## 3.6 — Verify the Knowledge Base Before Testing
+
+Before testing with complex questions, confirm the indexer has finished processing your data.
+
+### Step 1: Check Knowledge Source Status
+
+1. Go to **Knowledge** in the left navigation
+2. Click on `pharma-commercial-kb`
+3. Under **Knowledge sources**, verify the status shows **Active** (green)
+   - If it shows **Provisioning** or **Running** — wait 1-2 minutes and refresh
+   - If it shows **Error** — see troubleshooting below
+
+### Step 2: Quick Validation Query
+
+In the Agent Playground, start with a simple, direct query that tests basic retrieval:
+
+> *"List the file names you have access to in the knowledge base."*
+
+**Expected:** The agent should mention the CSV files (drug_pipeline, quarterly_revenue, regulatory_milestones). If it says "I don't have access" or "I couldn't find relevant data", the indexer hasn't completed or there's an auth issue.
+
+### Step 3: Test a Simple Data Lookup
+
+> *"What drugs are listed in the drug pipeline data?"*
+
+**Expected:** Should return drug names from `drug_pipeline.csv`. If successful, the knowledge base is working.
+
+### Troubleshooting: Knowledge Base Not Returning Data
+
+If the agent says it "couldn't find relevant data" or returns generic responses:
+
+| Symptom | Likely Cause | Fix |
+|---------|-------------|-----|
+| Agent says "I don't have access to that data" | Knowledge base not connected to agent | Verify KB is listed under agent's Knowledge section (Step 3.5) |
+| Agent says "My search didn't return relevant results" | Indexer hasn't finished OR has errors | Check source status in Knowledge → Sources → look for errors |
+| HTTP 403 in traces | Missing RBAC permissions | Ask your lab admin to re-run the setup script |
+| Source shows "Error" status | Search MI can't read from blob storage | Verify Search service has `Storage Blob Data Reader` on the storage account |
+
+**Portal-based verification (if issues persist):**
+
+1. Navigate to the **Azure Portal** → your Search service (starts with `srch...`)
+2. Click **Indexers** → find the indexer created by your knowledge source
+3. Check:
+   - **Status**: Should be "Success" (not "Failed" or "In Progress")
+   - **Documents Processed**: Should be > 0 (expect 3 for your CSV files)
+   - **Errors**: Should be 0
+
+4. If the indexer shows errors like "Could not connect to data source":
+   - This means the Search service's Managed Identity doesn't have `Storage Blob Data Reader` on the storage account
+   - Ask your lab administrator to run: 
+     ```powershell
+     # Grant Search MI access to read blobs (required for indexer)
+     $searchMI = az search service show --name <search-service> --resource-group rg-foundry-lab-shared --query "identity.principalId" -o tsv
+     $storageId = az storage account show --name <storage-account> --resource-group rg-foundry-lab-shared --query id -o tsv
+     az role assignment create --assignee $searchMI --role "Storage Blob Data Reader" --scope $storageId
+     ```
+
+5. After fixing permissions, click **Run** on the indexer to re-trigger it
+
+> **⏱️ RBAC propagation:** After granting new roles, wait 2-5 minutes before re-running the indexer. Azure role assignments can take time to propagate.
+
+---
+
+## 3.7 — Test Knowledge-Grounded Responses
 
 In the Agent Playground, ask questions that require the uploaded data:
 
@@ -208,7 +270,7 @@ In the Agent Playground, ask questions that require the uploaded data:
 
 ---
 
-## 3.7 — Observe the Foundry IQ Difference
+## 3.8 — Observe the Foundry IQ Difference
 
 Notice how the responses:
 - ✅ Include **citations** pointing to specific data files
@@ -220,7 +282,7 @@ Notice how the responses:
 
 ---
 
-## 3.8 — Checkpoint
+## 3.9 — Checkpoint
 
 ✅ You uploaded pharma commercial data to Azure Blob Storage  
 ✅ You created a Foundry IQ knowledge base using the pre-created search resource  
