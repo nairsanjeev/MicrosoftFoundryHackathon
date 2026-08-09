@@ -171,10 +171,9 @@ if ($existingLA) {
 # Create Application Insights (shared)
 # ============================================================================
 # Ensure the application-insights CLI extension is installed
-az extension add --name application-insights --yes 2>$null
-
 $savedErrorPrefAI = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
+az extension add --name application-insights --yes 2>$null | Out-Null
 $existingAI = az monitor app-insights component show --app $AppInsightsName --resource-group $sharedRg --query id -o tsv 2>$null
 $ErrorActionPreference = $savedErrorPrefAI
 if ($existingAI) {
