@@ -781,7 +781,7 @@ foreach ($user in $users) {
 }
 
 # ============================================================================
-# Grant Search Service access to Foundry resource (for Foundry IQ)
+# Grant service-to-service permissions (for Foundry IQ Managed Identity auth)
 # ============================================================================
 Write-Log ""
 Write-Log "Configuring service-to-service permissions..."
@@ -799,6 +799,40 @@ if ($searchIdentity) {
         --role "Cognitive Services User" `
         --scope $foundryId `
         --output none 2>&1 | Out-Null
+}
+
+# Grant Foundry resource's managed identity access to Search and Storage
+# This enables "Managed Identity" auth type when connecting Foundry IQ to Search
+$foundryIdentity = az cognitiveservices account show `
+    --name $FoundryResourceName `
+    --resource-group $sharedRg `
+    --query "identity.principalId" -o tsv
+
+if ($foundryIdentity) {
+    Write-Log "  Assigning Search Index Data Contributor to Foundry managed identity..."
+    az role assignment create `
+        --assignee $foundryIdentity `
+        --role "Search Index Data Contributor" `
+        --scope $searchId `
+        --output none 2>&1 | Out-Null
+
+    Write-Log "  Assigning Search Service Contributor to Foundry managed identity..."
+    az role assignment create `
+        --assignee $foundryIdentity `
+        --role "Search Service Contributor" `
+        --scope $searchId `
+        --output none 2>&1 | Out-Null
+
+    Write-Log "  Assigning Storage Blob Data Reader to Foundry managed identity..."
+    az role assignment create `
+        --assignee $foundryIdentity `
+        --role "Storage Blob Data Reader" `
+        --scope $storageId `
+        --output none 2>&1 | Out-Null
+
+    Write-Log "  Foundry MI configured for Managed Identity auth with Search and Storage"
+} else {
+    Write-Log "  Could not retrieve Foundry managed identity - Managed Identity auth may not work" "WARN"
 }
 
 # ============================================================================

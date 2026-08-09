@@ -81,18 +81,31 @@ You need to upload the pharma data files to Azure Blob Storage so Foundry IQ can
 
 ---
 
-## 3.4 — Create a Foundry IQ Knowledge Base
+## 3.4 — Connect to the Foundry IQ Resource
 
-Your lab environment has a **pre-created Foundry IQ resource** (Azure AI Search). You will use it to create a knowledge base backed by your pharma data.
+Your lab environment has a **pre-created Foundry IQ resource** (Azure AI Search) with Managed Identity already configured for secure, keyless authentication.
+
+### Step 1: Connect to the Search Resource
 
 1. In the **Foundry portal** (ai.azure.com), open your project (e.g., `proj-pharma-john-doe`)
 2. In the left navigation, click **Knowledge**
 3. Click **+ New knowledge base**
-4. When prompted to select a Foundry IQ resource, choose the **existing resource** that was pre-created for the lab (it will appear in the dropdown — look for a name starting with `srch...`)
+4. In the **Foundry IQ resource** dropdown, select the pre-created resource (name starts with `srch...`)
 
    > **⚠️ Important:** Do NOT click "Create new resource" — use the existing one to avoid capacity issues.
 
-5. Configure the knowledge base:
+5. In the **Auth Type** dropdown, select **Managed Identity**
+
+   > **🔒 Why Managed Identity?** There are three auth options:
+   > - **API Key** — simple but less secure (keys can leak)
+   > - **Entra ID** — user-based auth (tied to your login session)
+   > - **Managed Identity** — the most secure option. The Foundry resource authenticates to Search using its system-assigned identity with no secrets to manage or rotate.
+
+6. Click **Connect**
+
+### Step 2: Create the Knowledge Base
+
+Once connected, configure the knowledge base:
 
 | Setting | Value |
 |---------|-------|
@@ -102,20 +115,20 @@ Your lab environment has a **pre-created Foundry IQ resource** (Azure AI Search)
 | **Container** | `pharma-commercial-data` |
 | **Model for Synthesis** | `gpt-4.1` |
 
-6. Set **Output Mode** to **Answer Synthesis** — this enables the LLM to synthesize responses from retrieved data
-7. Add **Retrieval Instructions**:
+7. Set **Output Mode** to **Answer Synthesis** — this enables the LLM to synthesize responses from retrieved data
+8. Add **Retrieval Instructions**:
 ```
 Use this knowledge base for questions about drug pipeline, revenue performance, 
 market share, and regulatory milestones. Always cite specific data points 
 including quarter, therapeutic area, and drug names.
 ```
-8. Add **Answer Instructions**:
+9. Add **Answer Instructions**:
 ```
 Provide concise, data-driven answers. Include specific numbers from the data.
 Format financial figures in millions. Always state the quarter or time period 
 for any metrics cited.
 ```
-9. Click **Create**
+10. Click **Create**
 
 ---
 
