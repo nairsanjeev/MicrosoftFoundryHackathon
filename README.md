@@ -52,11 +52,12 @@ By the end of this lab series, you will:
 | Time | Lab | Topic | Duration |
 |------|-----|-------|----------|
 | 9:00 AM | [Lab 1](labs/Lab1-Explore-Foundry-Portal.md) | Explore Microsoft Foundry Portal & Capabilities | 30 min |
-| 9:30 AM | [Lab 2](labs/Lab2-Create-Prompt-Agent.md) | Create a Pharma Commercial Operations Agent | 45 min |
-| 10:15 AM | — | *Break* | 15 min |
-| 10:30 AM | [Lab 3](labs/Lab3-Foundry-IQ-Knowledge.md) | Connect with Foundry IQ Knowledge Base | 60 min |
-| 11:30 AM | — | *Break* | 15 min |
-| 11:45 AM | [Lab 4](labs/Lab4-Tool-Calling.md) | Tool Calling — Azure Functions & Code Interpreter | 60 min |
+| 9:30 AM | [Lab 1B](labs/Lab1B-Deploy-Model.md) | Deploy a Model (GPT-5-mini) | 15 min |
+| 9:45 AM | [Lab 2](labs/Lab2-Create-Prompt-Agent.md) | Create a Pharma Commercial Operations Agent | 45 min |
+| 10:30 AM | — | *Break* | 15 min |
+| 10:45 AM | [Lab 3](labs/Lab3-Foundry-IQ-Knowledge.md) | Connect with Foundry IQ Knowledge Base | 60 min |
+| 11:45 AM | — | *Break* | 15 min |
+| 12:00 PM | [Lab 4](labs/Lab4-Tool-Calling.md) | Tool Calling — Remote MCP Server via APIM | 60 min |
 | 12:45 PM | — | *Lunch* | 45 min |
 | 1:30 PM | [Lab 5](labs/Lab5-Hosted-Agent-Deployment.md) | Deploy a Hosted Agent with Microsoft Agent Framework | 60 min |
 | 2:30 PM | — | *Break* | 15 min |
@@ -75,7 +76,7 @@ The following have been set up in your lab environment:
 |----------|---------|
 | Azure Subscription | Provided with necessary RBAC roles |
 | Microsoft Foundry Project | `proj-pharma-ops` at [ai.azure.com](https://ai.azure.com) |
-| Model Deployments | `gpt-4.1` (Global Standard), `gpt-4.1-mini` |
+| Model Deployments | `gpt-4.1` (pre-deployed); you'll deploy `gpt-5-mini` in Lab 1B |
 | Azure AI Search | Service provisioned for Foundry IQ |
 | Azure Storage Account | For uploading pharma datasets |
 | Application Insights | Connected to Foundry project for tracing |
@@ -90,9 +91,10 @@ The following have been set up in your lab environment:
 | Lab | Title | What You'll Do |
 |-----|-------|----------------|
 | [Lab 1](labs/Lab1-Explore-Foundry-Portal.md) | **Explore Microsoft Foundry** | Tour the portal — Models, Tools, Knowledge, Playground |
+| [Lab 1B](labs/Lab1B-Deploy-Model.md) | **Deploy a Model** | Deploy your own GPT-5-mini model |
 | [Lab 2](labs/Lab2-Create-Prompt-Agent.md) | **Create a Prompt Agent** | Build your pharma analyst agent (UI + Python) |
 | [Lab 3](labs/Lab3-Foundry-IQ-Knowledge.md) | **Foundry IQ Knowledge** | Upload data, create knowledge base, get cited answers |
-| [Lab 4](labs/Lab4-Tool-Calling.md) | **Tool Calling** | Code Interpreter charts + Azure Function drug interactions |
+| [Lab 4](labs/Lab4-Tool-Calling.md) | **Tool Calling (MCP)** | Remote MCP server via APIM + API Center governance |
 | [Lab 5](labs/Lab5-Hosted-Agent-Deployment.md) | **Hosted Agent Deployment** | Agent Framework → local test → `azd deploy` |
 | [Lab 6](labs/Lab6-Monitoring-Evaluation.md) | **Monitoring & Evaluation** | Tracing, dashboards, continuous evaluation |
 
@@ -101,17 +103,19 @@ The following have been set up in your lab environment:
 ## Your Journey
 
 ```
-Lab 1: Explore          → Understand the unified platform
+Lab 1:  Explore          → Understand the unified platform
        │
-Lab 2: Create Agent     → Build a pharma AI analyst (declarative)
+Lab 1B: Deploy Model     → Deploy your own GPT-5-mini
        │
-Lab 3: Ground in Data   → Connect to enterprise knowledge (Foundry IQ)
+Lab 2:  Create Agent     → Build a pharma AI analyst (declarative)
        │
-Lab 4: Add Tools        → Extend with Code Interpreter + Azure Functions
+Lab 3:  Ground in Data   → Connect to enterprise knowledge (Foundry IQ)
        │
-Lab 5: Go Production    → Deploy as hosted agent (Microsoft Agent Framework)
+Lab 4:  Add MCP Tools    → Connect remote MCP server via APIM gateway
        │
-Lab 6: Observe & Eval   → Production monitoring + continuous quality gates
+Lab 5:  Go Production    → Deploy as hosted agent (Microsoft Agent Framework)
+       │
+Lab 6:  Observe & Eval   → Production monitoring + continuous quality gates
 ```
 
 ---

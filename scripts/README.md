@@ -166,6 +166,62 @@ az group delete --name rg-foundry-lab-shared --yes --no-wait
 
 > ⚠️ This permanently deletes all resources including model deployments, search indexes, storage data, and traces.
 
+---
+
+## MCP Infrastructure Setup (Lab 4)
+
+A separate script provisions the MCP (Model Context Protocol) infrastructure needed for Lab 4. Run this **after** the main setup script.
+
+### What it creates
+
+| Resource | Purpose |
+|----------|---------|
+| Azure Function App | Hosts 3 pharma MCP tools (drug interactions, pipeline status, revenue forecast) |
+| Azure API Management (Consumption) | MCP gateway with auth, rate limiting, and logging |
+| Azure API Center | API governance catalog for MCP tool discoverability |
+
+### Run the MCP setup
+
+```powershell
+.\setup-mcp-infrastructure.ps1 `
+  -SubscriptionId "your-subscription-id" `
+  -ResourceGroup "rg-foundry-lab-shared" `
+  -Location "eastus2" `
+  -AdminEmail "your-email@company.com" `
+  -UsersFile ".\users-sample.csv"
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `-SubscriptionId` | *(required)* | Azure subscription ID |
+| `-ResourceGroup` | `rg-foundry-lab-shared` | Existing resource group from main setup |
+| `-Location` | `eastus2` | Azure region |
+| `-AdminEmail` | `admin@contoso.com` | APIM publisher email |
+| `-FunctionAppName` | auto-generated | Name for Function App |
+| `-ApimName` | auto-generated | Name for API Management instance |
+| `-ApiCenterName` | `apic-foundry-lab` | Name for API Center |
+| `-UsersFile` | *(optional)* | Path to users CSV (generates per-user MCP info) |
+
+### Output
+
+The script generates `mcp-endpoint-info-<timestamp>.txt` containing:
+- MCP Server URL (APIM gateway endpoint)
+- APIM Subscription Key
+- Agent configuration values to copy into the Foundry portal
+
+Distribute this to lab attendees for Lab 4.
+
+### Timing
+
+- **Function App:** ~2 minutes
+- **APIM (Consumption):** ~10-30 minutes (can take longer on first provision)
+- **API Center:** ~2 minutes
+- **Total:** ~15-35 minutes
+
+> **💡 Tip:** APIM Consumption tier may take up to 30 minutes to provision. Start this script during a lab break so it's ready before Lab 4 begins.
+
+---
+
 ## Troubleshooting
 
 | Issue | Solution |

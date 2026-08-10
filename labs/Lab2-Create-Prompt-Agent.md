@@ -16,7 +16,7 @@
 | Setting | Value |
 |---------|-------|
 | **Agent Name** | `ZavaCommOpsAnalyst` |
-| **Model** | `gpt-4.1` (Global Standard deployment) |
+| **Model** | `gpt-5-mini` (your deployment from Lab 1B) |
 | **Instructions** | *(see below)* |
 
 4. In the **Instructions** field, paste the following:
