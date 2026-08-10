@@ -52,11 +52,10 @@ $ErrorActionPreference = "Continue"
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $logFile = "./setup-mcp-log-$timestamp.txt"
 
-# Generate short random suffix for globally-unique names
+# Generate short random suffix for globally-unique names (used only if no existing resources found)
 $randomSuffix = -join ((97..122) | Get-Random -Count 5 | ForEach-Object { [char]$_ })
 
-if (-not $FunctionAppName) { $FunctionAppName = "func-pharma-mcp-$randomSuffix" }
-if (-not $ApimName) { $ApimName = "apim-foundry-lab-$randomSuffix" }
+# Name defaults are applied AFTER resource discovery (see below)
 if (-not $ApiCenterName) { $ApiCenterName = "apic-foundry-lab" }
 
 function Write-Log {
@@ -88,12 +87,45 @@ if ($rgExists -ne "true") {
     exit 1
 }
 
-# Create a dedicated storage account for the Function App
+# ============================================================================
+# Discover existing MCP resources (for idempotent re-runs)
+# ============================================================================
+# Look for existing Function App matching our naming pattern in the RG
+if (-not $FunctionAppName) {
+    $existingFuncApp = az functionapp list --resource-group $ResourceGroup --query "[?contains(name,'func-pharma-mcp')].name" -o tsv 2>$null
+    if ($existingFuncApp) {
+        $FunctionAppName = $existingFuncApp
+        Write-Log "Discovered existing Function App: $FunctionAppName"
+    } else {
+        $FunctionAppName = "func-pharma-mcp-$randomSuffix"
+    }
+}
+
+# Look for existing APIM instance in the RG
+if (-not $ApimName) {
+    $existingApimInstance = az apim list --resource-group $ResourceGroup --query "[0].name" -o tsv 2>$null
+    if ($existingApimInstance) {
+        $ApimName = $existingApimInstance
+        Write-Log "Discovered existing APIM: $ApimName"
+    } else {
+        $ApimName = "apim-foundry-lab-$randomSuffix"
+    }
+}
+
+# Look for existing function storage account (stmcpfunc*)
+$existingFuncStorageAccount = az storage account list --resource-group $ResourceGroup --query "[?starts_with(name,'stmcpfunc')].name" -o tsv 2>$null
+if ($existingFuncStorageAccount) {
+    $funcStorageName = $existingFuncStorageAccount
+    Write-Log "Discovered existing function storage: $funcStorageName"
+} else {
+    $funcStorageName = "stmcpfunc$randomSuffix"
+}
+
+# Create dedicated storage account for the Function App if not found
 # (The shared lab storage may have network restrictions incompatible with Consumption plan)
-$funcStorageName = "stmcpfunc$randomSuffix"
 $existingFuncStorage = az storage account show --name $funcStorageName --resource-group $ResourceGroup --query name -o tsv 2>$null
 if ($existingFuncStorage) {
-    Write-Log "Function storage account already exists: $funcStorageName - reusing"
+    Write-Log "Function storage account already exists: $funcStorageName (skipping)"
 } else {
     Write-Log "Creating dedicated storage account for Function App: $funcStorageName"
     az storage account create `
@@ -122,8 +154,10 @@ Write-Log "============================================"
 
 $existingFunc = az functionapp show --name $FunctionAppName --resource-group $ResourceGroup --query name -o tsv 2>$null
 if ($existingFunc) {
-    Write-Log "Function App already exists: $FunctionAppName - reusing"
+    Write-Log "Function App already exists: $FunctionAppName (skipping creation)"
+    $skipDeploy = $true
 } else {
+    $skipDeploy = $false
     Write-Log "Creating Function App: $FunctionAppName"
     az functionapp create `
         --name $FunctionAppName `
@@ -155,8 +189,11 @@ $funcAppUrl = az functionapp show `
     --query "defaultHostName" -o tsv
 Write-Log "Function App URL: https://$funcAppUrl"
 
-# Deploy the MCP function code
-Write-Log "Deploying pharma MCP tools to Function App..."
+# Deploy the MCP function code (skip if already deployed on re-run)
+if ($skipDeploy) {
+    Write-Log "Function App already deployed - skipping code deployment"
+} else {
+    Write-Log "Deploying pharma MCP tools to Function App..."
 
 $funcCodeDir = Join-Path $PSScriptRoot "mcp-function-app"
 if (-not (Test-Path $funcCodeDir)) {
@@ -483,9 +520,13 @@ if ($LASTEXITCODE -eq 0) {
         --output none 2>&1
 }
 
+} # end of deployment block (skip if already deployed)
+
 # Get the function key for APIM backend auth
 Write-Log "Retrieving function host key..."
-Start-Sleep -Seconds 10  # Wait for deployment to stabilize
+if (-not $skipDeploy) {
+    Start-Sleep -Seconds 10  # Wait for deployment to stabilize on fresh deploy
+}
 $funcHostKey = az functionapp keys list `
     --name $FunctionAppName `
     --resource-group $ResourceGroup `
