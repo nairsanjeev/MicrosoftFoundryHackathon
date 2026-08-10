@@ -123,6 +123,16 @@ if ($existingFuncStorageAccount) {
     $funcStorageName = "stmcpfunc$randomSuffix"
 }
 
+# Ensure function storage has public network access (Consumption plan requirement)
+# Subscription policies may have restricted network access on the storage account
+Write-Log "Ensuring function storage allows public network access..."
+az storage account update `
+    --name $funcStorageName `
+    --resource-group $ResourceGroup `
+    --public-network-access Enabled `
+    --default-action Allow `
+    --output none 2>$null
+
 # Create dedicated storage account for the Function App if not found
 # (The shared lab storage may have network restrictions incompatible with Consumption plan)
 $existingFuncStorage = az storage account show --name $funcStorageName --resource-group $ResourceGroup --query name -o tsv 2>$null
@@ -137,6 +147,8 @@ if ($existingFuncStorage) {
         --sku Standard_LRS `
         --kind StorageV2 `
         --allow-blob-public-access false `
+        --public-network-access Enabled `
+        --default-action Allow `
         --output none 2>&1
 
     if ($LASTEXITCODE -ne 0) {
@@ -173,8 +185,22 @@ if ($existingFunc) {
         --output none 2>&1
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Log "Failed to create Function App" "ERROR"
-        exit 1
+        Write-Log "Consumption plan failed (likely storage network restrictions). Trying Flex Consumption..." "WARN"
+        az functionapp create `
+            --name $FunctionAppName `
+            --resource-group $ResourceGroup `
+            --storage-account $funcStorageName `
+            --runtime python `
+            --runtime-version 3.11 `
+            --functions-version 4 `
+            --os-type Linux `
+            --flexconsumption-location $Location `
+            --output none 2>&1
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-Log "Failed to create Function App (both Consumption and Flex plans failed)" "ERROR"
+            exit 1
+        }
     }
     Write-Log "Function App created: $FunctionAppName"
 
