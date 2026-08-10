@@ -88,6 +88,20 @@ if ($rgExists -ne "true") {
 }
 
 # ============================================================================
+# Register Required Providers
+# ============================================================================
+$mcpProviders = @("Microsoft.Web", "Microsoft.ApiManagement", "Microsoft.Storage")
+foreach ($provider in $mcpProviders) {
+    $regState = az provider show --namespace $provider --query registrationState -o tsv 2>$null
+    if ($regState -eq "Registered") {
+        Write-Log "$provider - already registered"
+    } else {
+        Write-Log "Registering $provider..."
+        az provider register --namespace $provider --wait 2>&1 | Out-Null
+    }
+}
+
+# ============================================================================
 # Discover existing MCP resources (for idempotent re-runs)
 # ============================================================================
 # Look for existing Function App matching our naming pattern in the RG
