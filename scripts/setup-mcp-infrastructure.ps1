@@ -92,7 +92,8 @@ if ($rgExists -ne "true") {
 # ============================================================================
 # Look for existing Function App matching our naming pattern in the RG
 if (-not $FunctionAppName) {
-    $existingFuncApp = az functionapp list --resource-group $ResourceGroup --query "[?contains(name,'func-pharma-mcp')].name" -o tsv 2>$null
+    $allFuncApps = @(az functionapp list --resource-group $ResourceGroup --query "[].name" -o tsv 2>$null)
+    $existingFuncApp = $allFuncApps | Where-Object { $_ -like "func-pharma-mcp*" } | Select-Object -First 1
     if ($existingFuncApp) {
         $FunctionAppName = $existingFuncApp
         Write-Log "Discovered existing Function App: $FunctionAppName"
