@@ -113,7 +113,8 @@ if (-not $ApimName) {
 }
 
 # Look for existing function storage account (stmcpfunc*)
-$existingFuncStorageAccount = az storage account list --resource-group $ResourceGroup --query "[?starts_with(name,'stmcpfunc')].name" -o tsv 2>$null
+$allStorageAccounts = @(az storage account list --resource-group $ResourceGroup --query "[].name" -o tsv 2>$null)
+$existingFuncStorageAccount = $allStorageAccounts | Where-Object { $_ -like "stmcpfunc*" } | Select-Object -First 1
 if ($existingFuncStorageAccount) {
     $funcStorageName = $existingFuncStorageAccount
     Write-Log "Discovered existing function storage: $funcStorageName"
