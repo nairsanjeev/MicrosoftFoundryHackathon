@@ -172,7 +172,7 @@ if ($existingFunc) {
     $skipDeploy = $true
 } else {
     $skipDeploy = $false
-    Write-Log "Creating Function App: $FunctionAppName"
+    Write-Log "Creating Function App: $FunctionAppName (Flex Consumption)"
     az functionapp create `
         --name $FunctionAppName `
         --resource-group $ResourceGroup `
@@ -181,11 +181,12 @@ if ($existingFunc) {
         --runtime-version 3.11 `
         --functions-version 4 `
         --os-type Linux `
-        --consumption-plan-location $Location `
+        --flexconsumption-location $Location `
+        --configure-networking-later `
         --output none 2>&1
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Log "Consumption plan failed (likely storage network restrictions). Trying Flex Consumption..." "WARN"
+        Write-Log "Flex Consumption failed. Trying Consumption plan as fallback..." "WARN"
         az functionapp create `
             --name $FunctionAppName `
             --resource-group $ResourceGroup `
@@ -194,11 +195,11 @@ if ($existingFunc) {
             --runtime-version 3.11 `
             --functions-version 4 `
             --os-type Linux `
-            --flexconsumption-location $Location `
+            --consumption-plan-location $Location `
             --output none 2>&1
 
         if ($LASTEXITCODE -ne 0) {
-            Write-Log "Failed to create Function App (both Consumption and Flex plans failed)" "ERROR"
+            Write-Log "Failed to create Function App (both Flex and Consumption plans failed)" "ERROR"
             exit 1
         }
     }
