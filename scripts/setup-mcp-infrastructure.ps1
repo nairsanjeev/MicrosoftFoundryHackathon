@@ -88,13 +88,29 @@ if ($rgExists -ne "true") {
     exit 1
 }
 
-# Get the existing storage account from the resource group
-$storageAccount = az storage account list --resource-group $ResourceGroup --query "[0].name" -o tsv 2>$null
-if (-not $storageAccount) {
-    Write-Log "No storage account found in $ResourceGroup. Run setup-lab-environment.ps1 first." "ERROR"
-    exit 1
+# Create a dedicated storage account for the Function App
+# (The shared lab storage may have network restrictions incompatible with Consumption plan)
+$funcStorageName = "stmcpfunc$randomSuffix"
+$existingFuncStorage = az storage account show --name $funcStorageName --resource-group $ResourceGroup --query name -o tsv 2>$null
+if ($existingFuncStorage) {
+    Write-Log "Function storage account already exists: $funcStorageName - reusing"
+} else {
+    Write-Log "Creating dedicated storage account for Function App: $funcStorageName"
+    az storage account create `
+        --name $funcStorageName `
+        --resource-group $ResourceGroup `
+        --location $Location `
+        --sku Standard_LRS `
+        --kind StorageV2 `
+        --allow-blob-public-access false `
+        --output none 2>&1
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Log "Failed to create function storage account" "ERROR"
+        exit 1
+    }
 }
-Write-Log "Using existing storage account: $storageAccount"
+Write-Log "Function storage account ready: $funcStorageName"
 
 # ============================================================================
 # Step 1: Create Azure Function App with Pharma MCP Tools
@@ -112,7 +128,7 @@ if ($existingFunc) {
     az functionapp create `
         --name $FunctionAppName `
         --resource-group $ResourceGroup `
-        --storage-account $storageAccount `
+        --storage-account $funcStorageName `
         --runtime python `
         --runtime-version 3.11 `
         --functions-version 4 `
